@@ -202,6 +202,7 @@
   .field input:focus,.field select:focus,.inp:focus{outline:none;border-color:var(--primary);background:#fff;
     box-shadow:0 0 0 3px var(--primary-50)}
   .field input.num{flex:0 0 86px;width:86px;text-align:center}
+  .field input[type=month],.field input[type=date]{flex:0 0 180px;width:180px}
   .field input[type=checkbox],.field input[type=radio]{flex:none;width:16px;height:16px;padding:0;margin:0;accent-color:var(--primary)}
   .field label input[type=checkbox]{vertical-align:-3px;margin-right:6px}
   .field input[type=time]{flex:0 0 124px;width:124px;text-align:center}
@@ -806,7 +807,7 @@
             <button aria-pressed="true" data-v="one">单月</button>
             <button aria-pressed="false" data-v="range">月份区间</button>
           </div></div>
-        <div class="field" id="tOneRow"><label></label><input id="tMonthVal" type="month"><span class="unit">留空 = 上个月</span></div>
+        <div class="field" id="tOneRow"><label></label><input id="tMonthVal" type="month"><span class="unit">默认上个月</span></div>
         <div class="field" id="tMRangeRow" style="display:none"><label></label>
           <input id="tMStart" type="month"><span class="unit">至</span><input id="tMEnd" type="month"></div>
         <p class="note" style="margin:-6px 0 12px 102px">月初目的地评级常常还没出上月数据，会显示「部分完成」，已采到的照常入库推送。</p>
@@ -1814,7 +1815,9 @@ function openTaskDialog(preselect){
       <span style="flex:1">${esc(a.name || a.account || a.account_id)} <span class="mono muted">${esc(a.account_id)}</span></span>
       <span class="tag ${stateCls(a)}">${stateOf(a)}</span>${a.task ? ' <span class="tag info">采集中</span>' : ""}
     </label>`).join("") : '<p class="note">还没有账号</p>';
-  $("tMonthVal").placeholder = lastMonth();
+  // 月份默认上个月（评级只对上月及更早有数据），单月和区间的起止都预先填好，不能选到本月及以后
+  const lm = lastMonth();
+  ["tMonthVal", "tMStart", "tMEnd"].forEach(id => { $(id).value = lm; $(id).max = lm; });
   syncTaskSections();
   updateTaskSummary();
   openModal("mTask");
@@ -1869,8 +1872,8 @@ function buildTask(){
       params.start_month = $("tMStart").value; params.end_month = $("tMEnd").value;
       when.push(`${params.start_month} ~ ${params.end_month}`);
     } else {
-      if ($("tMonthVal").value) params.month = $("tMonthVal").value;
-      when.push(params.month || `${lastMonth()}（上月）`);
+      params.month = $("tMonthVal").value || lastMonth();
+      when.push(params.month === lastMonth() ? `${params.month}（上月）` : params.month);
     }
   }
   if (!ids.length) return {err: "至少选一个账号"};
