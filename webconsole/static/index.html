@@ -52,18 +52,25 @@
   .rail::after{content:"";position:absolute;right:0;top:30px;bottom:30px;width:1px;background:#DDE2EC}
   .rail-logo{width:52px;height:52px;display:block;margin-bottom:34px;filter:drop-shadow(0 8px 16px rgba(232,68,180,.35))}
   .rail-logo img{width:100%;height:100%;display:block}
-  .rail-nav{display:flex;flex-direction:column;gap:14px;align-items:center;flex:1;min-height:0;overflow-y:auto;padding:4px 0}
-  .rail-item{position:relative;border:0;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;
-    gap:6px;color:var(--muted);font-size:11.5px;font-weight:600;padding:0;width:84px}
-  .rail-ic{width:46px;height:46px;border-radius:50%;background:#fff;display:grid;place-items:center;color:#8C94A8;
-    box-shadow:0 6px 16px rgba(40,60,120,.08);transition:transform .12s,background .12s,box-shadow .12s}
-  .rail-ic svg{width:20px;height:20px}
-  .rail-item:hover .rail-ic{transform:translateY(-1px);color:var(--primary-d)}
-  .rail-item.on{color:var(--primary-d)}
-  .rail-item.on .rail-ic{background:var(--primary);color:#fff;box-shadow:0 10px 22px rgba(106,133,232,.55)}
-  .rail-item .badge{position:absolute;top:-2px;right:14px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  .rail-nav{display:flex;flex-direction:column;gap:18px;align-items:center;flex:1;min-height:0;padding:4px 0}
+  .rail-item{position:relative;border:0;background:none;cursor:pointer;padding:0;display:grid;place-items:center}
+  .rail-ic{width:54px;height:54px;border-radius:50%;background:#fff;display:grid;place-items:center;
+    box-shadow:0 6px 16px rgba(40,60,120,.08);transition:transform .14s,box-shadow .14s}
+  .rail-ic img{width:28px;height:28px;object-fit:contain;display:block;opacity:.72;filter:saturate(.75);transition:opacity .14s,filter .14s,transform .14s}
+  .rail-item:hover .rail-ic{transform:translateY(-2px);box-shadow:0 10px 22px rgba(40,60,120,.14)}
+  .rail-item:hover .rail-ic img{opacity:1;filter:none}
+  .rail-item.on .rail-ic{box-shadow:0 0 0 3px var(--primary),0 12px 26px rgba(106,133,232,.45)}
+  .rail-item.on .rail-ic img{opacity:1;filter:none;transform:scale(1.08)}
+  .rail-item.on::before{content:"";position:absolute;right:-27px;top:50%;width:4px;height:26px;margin-top:-13px;border-radius:3px;background:var(--primary)}
+  /* 只显示图标：名字用悬停提示 */
+  .rail-item::after{content:attr(data-tip);position:absolute;left:66px;top:50%;transform:translate(-4px,-50%);white-space:nowrap;
+    background:#2B2F3D;color:#fff;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px;pointer-events:none;
+    opacity:0;transition:opacity .12s,transform .12s;z-index:40;box-shadow:0 8px 20px rgba(0,0,0,.2)}
+  .rail-item:hover::after,.rail-item:focus-visible::after{opacity:1;transform:translate(0,-50%)}
+  .rail-item .badge{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;
     background:var(--brand);color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center;border:2px solid var(--panel)}
   .rail-item .badge:empty{display:none}
+  .rail-item:focus-visible{outline:none}
   .rail-item:focus-visible .rail-ic{outline:2px solid var(--orange);outline-offset:3px}
   .rail-foot{margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--muted);font-size:10.5px;text-align:center}
   .rail-foot .dot{width:10px;height:10px}
@@ -475,9 +482,10 @@
     .rail{flex-direction:row;padding:10px 12px;gap:10px;overflow-x:auto}
     .rail::after{display:none}
     .rail-logo{width:36px;height:36px;margin:0;flex:none}
-    .rail-nav{flex-direction:row;gap:4px;overflow:visible}
-    .rail-item{width:60px;font-size:10.5px}
-    .rail-ic{width:36px;height:36px}
+    .rail-nav{flex-direction:row;gap:10px;overflow:visible}
+    .rail-ic{width:40px;height:40px}
+    .rail-ic img{width:22px;height:22px}
+    .rail-item::after,.rail-item.on::before{display:none}
     .rail-foot{display:none}
     .topbar{height:auto;padding:16px;flex-wrap:wrap}
     .topbar h1{font-size:22px}
@@ -528,14 +536,14 @@
   <aside class="rail">
     <a class="rail-logo" href="#/overview" title="OTAOPS"><img src="/static/logo.png" alt="OTAOPS"></a>
     <nav class="rail-nav" aria-label="主菜单">
-      <button class="rail-item" data-route="overview" data-group="overview"><span class="rail-ic"><svg class="i"><use href="#i-grid"/></svg></span>总览</button>
-      <button class="rail-item" data-route="accounts" data-group="accounts"><span class="rail-ic"><svg class="i"><use href="#i-user"/></svg></span>账户管理<span class="badge" id="badgeAcct"></span></button>
-      <button class="rail-item" data-route="runs" data-group="tasks"><span class="rail-ic"><svg class="i"><use href="#i-list"/></svg></span>任务管理<span class="badge" id="badgeTasks"></span></button>
-      <button class="rail-item" data-route="sync-tables" data-group="sync"><span class="rail-ic"><svg class="i"><use href="#i-up"/></svg></span>远程同步<span class="badge" id="badgeSync"></span></button>
-      <button class="rail-item" data-route="notify" data-group="notify"><span class="rail-ic"><svg class="i"><use href="#i-bell"/></svg></span>通知管理</button>
-      <button class="rail-item" data-route="system" data-group="system"><span class="rail-ic"><svg class="i"><use href="#i-gear"/></svg></span>系统设置</button>
+      <button class="rail-item" data-route="overview" data-group="overview" data-tip="总览" aria-label="总览"><span class="rail-ic"><img src="/static/icons/overview.png" alt=""></span></button>
+      <button class="rail-item" data-route="accounts" data-group="accounts" data-tip="账户管理" aria-label="账户管理"><span class="rail-ic"><img src="/static/icons/accounts.png" alt=""></span><span class="badge" id="badgeAcct"></span></button>
+      <button class="rail-item" data-route="runs" data-group="tasks" data-tip="任务管理" aria-label="任务管理"><span class="rail-ic"><img src="/static/icons/tasks.png" alt=""></span><span class="badge" id="badgeTasks"></span></button>
+      <button class="rail-item" data-route="sync-tables" data-group="sync" data-tip="远程同步" aria-label="远程同步"><span class="rail-ic"><img src="/static/icons/sync.svg" alt=""></span><span class="badge" id="badgeSync"></span></button>
+      <button class="rail-item" data-route="notify" data-group="notify" data-tip="通知管理" aria-label="通知管理"><span class="rail-ic"><img src="/static/icons/notify.png" alt=""></span></button>
+      <button class="rail-item" data-route="system" data-group="system" data-tip="系统设置" aria-label="系统设置"><span class="rail-ic"><img src="/static/icons/system.png" alt=""></span></button>
     </nav>
-    <div class="rail-foot" title="定时采集与补推的调度线程"><span class="dot" id="schedDot2"></span>调度</div>
+    <div class="rail-foot" title="调度线程状态（绿色 = 运行中）"><span class="dot" id="schedDot2"></span></div>
   </aside>
 
   <!-- ================================================================ 主区 -->
