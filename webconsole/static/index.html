@@ -544,6 +544,174 @@
     .modal{padding:8px}
     .savebar{margin:0 -16px -30px;padding:12px 16px}
   }
+
+  /* ===================================================================== 模板主题
+     顶部导航 + 浅色磨砂背景 + 深色列表面板 + 柠檬绿强调色（参考 Invoices 模板） */
+  :root{
+    --bg1:#F3F6FA; --bg2:#D8E2EE;
+    --lime:#D9F24A; --lime-d:#C3DC33; --dark:#232323; --dark-2:#2E2E2E; --steel:#8DA3B6;
+    --primary:#1F1F1F; --primary-d:#111111; --primary-50:#EEF0F3; --primary-100:#DADDE3;
+    --orange:#D9F24A; --orange-d:#5C6E00;                       /* 强调色：柠檬绿（作文字时用深橄榄） */
+    --brand:#D9F24A; --brand-50:#F4FAD6;
+    --info:#5E7FA0; --info-50:#E6EEF5;
+    --ink:#161616; --ink-2:#45484F; --muted:#8A8F99; --line:#E4E7EC; --soft:#F3F5F8;
+    --soft-shadow:0 10px 30px rgba(40,60,100,.07);
+  }
+  body{background:radial-gradient(1100px 520px at 18% -10%,#FFFFFF 0%,rgba(255,255,255,0) 60%),linear-gradient(160deg,var(--bg1),var(--bg2))}
+  .app{display:flex;flex-direction:column;grid-template-columns:none;background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(236,242,249,.55));
+    border:1px solid rgba(255,255,255,.95);border-radius:28px;box-shadow:0 30px 70px rgba(30,50,90,.16),0 0 0 6px rgba(35,35,35,.04)}
+  .main{flex:1;min-height:0}
+
+  /* ---- 顶部导航 ---- */
+  .tnav{display:flex;align-items:center;gap:16px;padding:16px 28px 6px;flex:none;position:relative;z-index:20}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);min-width:170px}
+  .brand img{height:34px;width:auto;display:block}
+  .brand b{font-size:17px;font-weight:800;letter-spacing:.02em}
+  .tpill{display:flex;align-items:center;gap:4px;background:var(--dark);border-radius:28px;padding:5px;margin:0 auto;box-shadow:0 10px 24px rgba(20,20,20,.18)}
+  .tpill .rail-item{display:flex;align-items:center;gap:8px;height:42px;padding:0 6px;border-radius:22px;color:#fff;font-size:13px;font-weight:700;
+    background:none;border:0;cursor:pointer;position:relative;transition:background .15s,padding .15s}
+  .tpill .rail-ic{width:32px;height:32px;border-radius:50%;background:#F1F1F1;box-shadow:none;display:grid;place-items:center;transition:background .15s}
+  .tpill .rail-ic img{width:18px;height:18px;object-fit:contain;opacity:.9;filter:none;transform:none}
+  .tpill .rail-item:hover .rail-ic{transform:none;background:#fff;box-shadow:0 0 0 3px rgba(217,242,74,.55)}
+  .tpill .lbl{display:none;white-space:nowrap}
+  .tpill .rail-item.on{background:var(--lime);color:#161616;padding:0 16px 0 5px}
+  .tpill .rail-item.on .rail-ic{background:#fff;box-shadow:none}
+  .tpill .rail-item.on .lbl{display:inline}
+  .tpill .rail-item.on::before{display:none}
+  .tpill .rail-item::after{left:50%;top:auto;bottom:-40px;transform:translate(-50%,-4px)}
+  .tpill .rail-item:hover::after,.tpill .rail-item:focus-visible::after{transform:translate(-50%,0)}
+  .tpill .rail-item.on::after{display:none}
+  .tpill .rail-item .badge{top:-3px;right:-3px;background:var(--lime);color:#161616;border-color:var(--dark)}
+  .tpill .rail-item.on .badge{background:#161616;color:var(--lime);border-color:var(--lime)}
+  .tright{display:flex;align-items:center;gap:10px;min-width:170px;justify-content:flex-end}
+  .tright .health{width:40px;height:40px}
+  .tright .health svg{width:20px;height:20px}
+  .tright .health::after{left:auto;right:0;top:50px;transform:translate(0,-4px)}
+  .tright .health:hover::after{transform:translate(0,0)}
+  .icon-btn{background:#fff;box-shadow:var(--soft-shadow)}
+  .icon-btn .dotn{background:var(--lime);color:#161616;border-color:#fff}
+  .avatar{box-shadow:var(--soft-shadow)}
+
+  /* ---- 页面标题行 ---- */
+  .topbar{min-height:auto;padding:16px 32px 20px;gap:22px;align-items:center}
+  .topbar .ttl{min-width:0}
+  .topbar h1{font-size:46px;font-weight:400;letter-spacing:-.025em;line-height:1.05}
+  .topbar .crumb{margin-top:6px}
+  .topbar .right{margin-left:auto}
+  .ptabs{margin:0;background:#fff;border-radius:24px;padding:4px;box-shadow:var(--soft-shadow)}
+  .ptabs:empty{display:none}
+  .ptabs button{color:var(--ink-2);padding:7px 16px;border-radius:20px}
+  .ptabs button:hover{color:var(--ink)}
+  .ptabs button.on{background:var(--lime);color:#161616;box-shadow:none}
+  .content{padding:0 32px 36px}
+  .savebar{margin:0 -32px -36px;padding:14px 32px 18px}
+
+  /* ---- 按钮 / 筛选：胶囊 ---- */
+  .btn{border-radius:22px}
+  .btn--sm{border-radius:16px}
+  .btn--white{background:#fff;border:1px solid #E1E4EA;color:var(--ink);padding:9px 18px;box-shadow:var(--soft-shadow)}
+  .btn--white:hover:not(:disabled){border-color:#C9CED7;color:var(--ink)}
+  .btn--primary{background:var(--dark);border-color:var(--dark);color:#fff;box-shadow:none}
+  .btn--primary:hover:not(:disabled){background:#000;border-color:#000;color:#fff}
+  .btn--orange{background:var(--lime);color:#161616;border:0;box-shadow:none}
+  .btn--orange:hover:not(:disabled){background:var(--lime-d);color:#161616;box-shadow:0 8px 18px rgba(195,220,51,.45);filter:none}
+  .btn--orange svg{stroke:#161616}
+  .pill{color:var(--ink-2);box-shadow:none;border:1px solid #E6E9EE}
+  .pill:hover{background:#fff;border-color:#D3D8E0}
+  .pill.on{background:var(--dark);color:#fff;border-color:var(--dark);box-shadow:none}
+  .pill.on .n{color:var(--lime);opacity:1}
+  .search,.sel{background:#fff;border:1px solid #E6E9EE;border-radius:22px}
+  .toolbar .lbl{font-weight:700}
+
+  /* ---- 卡片：磨砂玻璃 ---- */
+  .card,.stat,.dt-empty{background:rgba(255,255,255,.66);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.9);box-shadow:var(--soft-shadow)}
+  .card-hd{border-bottom-color:rgba(20,30,50,.06)}
+
+  /* ---- 列表：深色面板 ---- */
+  .xt-wrap{background:var(--dark);border-radius:24px;padding:6px 6px 8px;box-shadow:0 22px 44px rgba(20,25,35,.2);
+    --ink:#F4F4F4;--ink-2:#D2D2D2;--muted:#9A9A9A;--line:#363636}
+  table.xt{color:#E9E9E9}
+  .xt th{background:var(--dark);color:#9C9C9C;border-bottom:1px solid #353535}
+  .xt td{border-top:1px solid #333}
+  .xt tbody tr:first-child td{border-top:0}
+  .xt tbody tr:hover td{background:#2D2D2D}
+  .xt .acts-col,.xt th.acts-col{background:var(--dark);box-shadow:-10px 0 14px -12px rgba(0,0,0,.8)}
+  .xt tbody tr:hover td.acts-col{background:#2D2D2D}
+  .xt .who b{color:#F7F7F7}
+  .xt .who small,.xt .when{color:#A8A8A8}
+  .xt .err{color:#FF9B9E}
+  .xt-wrap .plat{background:var(--lime);color:#161616}
+  .xt-wrap .grp-tag{background:#343434;color:#E6E6E6}
+  .xt-wrap .grp-tag.none{background:rgba(227,154,18,.18);color:#F5C35C}
+  .xt-wrap .tbl-badge{background:#343434;color:#EDEDED}
+  .xt-wrap .tag{background:#383838;color:#D8D8D8}
+  .xt-wrap .tag.ok{background:rgba(31,190,140,.18);color:#62E3B5}
+  .xt-wrap .tag.warn{background:rgba(234,170,40,.18);color:#F6C863}
+  .xt-wrap .tag.bad{background:rgba(240,90,95,.2);color:#FF9195}
+  .xt-wrap .tag.info{background:rgba(141,163,182,.25);color:#CFDDEA}
+  .xt-wrap .jchip{background:#353535;color:#D6D6D6}
+  .xt-wrap .jchip.ok{background:rgba(31,190,140,.16);color:#6DE6BB}
+  .xt-wrap .jchip.warn{background:rgba(234,170,40,.16);color:#F6C863}
+  .xt-wrap .jchip.bad{background:rgba(240,90,95,.18);color:#FF9195}
+  .xt-wrap .jchip.info{background:rgba(141,163,182,.22);color:#CFDDEA}
+  .xt-wrap .ib{color:#D4D4D4}
+  .xt-wrap .ib:hover{background:#3A3A3A}
+  .xt-wrap .ib.dark{color:#FFFFFF}
+  .xt-wrap .ib.orange{color:var(--lime)}
+  .xt-wrap .ib.orange:hover{background:rgba(217,242,74,.14)}
+  .xt-wrap .ib.red{color:#FF8E92}
+  .xt-wrap .ib.red:hover{background:rgba(240,90,95,.16)}
+  .xt-wrap .ib.solid svg{background:var(--lime);stroke:#161616;color:#161616}
+  .xt-wrap .switch span{background:#4A4A4A}
+  .xt-wrap .switch input:checked + span{background:var(--lime)}
+  .xt-wrap .switch input:checked + span::after{background:#161616}
+  .xt-wrap .dot{background:#5A5A5A}
+  .xt-wrap .dot.ok{background:#3FD69E} .xt-wrap .dot.info{background:var(--lime)}
+
+  /* ---- 总览统计：浅色玻璃卡 ---- */
+  .hero{background:rgba(255,255,255,.66);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.95);
+    color:var(--ink);box-shadow:var(--soft-shadow);padding:26px 90px 26px 30px;margin:0 0 26px;border-radius:26px}
+  .hero::after{display:none}
+  .hero-id .sub{color:var(--muted)}
+  .hero-id .mini{color:var(--ink-2)}
+  .avs span{border-color:#fff}
+  .ring .trk{stroke:#E6EAF0} .ring .bar{stroke:var(--lime-d);filter:none}
+  .ring img{box-shadow:0 4px 14px rgba(30,40,60,.12)}
+  .big{color:var(--ink);text-shadow:none;font-weight:400;font-size:46px;letter-spacing:-.02em}
+  .big small{font-size:20px;color:var(--muted);font-weight:400}
+  .hstat{align-items:flex-start;text-align:left}
+  .hstat .lbl,.lbl.blue,.lbl.green,.lbl.pink{color:var(--muted);text-shadow:none;letter-spacing:.02em;font-weight:600;font-size:12.5px}
+  .bars{gap:6px;height:48px}
+  .bars i{width:12px;border-radius:6px;box-shadow:none;background:repeating-linear-gradient(-45deg,var(--lime) 0 3px,#C8E23A 3px 6px)}
+  .bars i.zero{background:#E6EAF0}
+  .bars i.bad{background:repeating-linear-gradient(-45deg,#FF9BA0 0 3px,#F36B72 3px 6px);box-shadow:none}
+  .donut .trk{stroke:#E6EAF0} .donut .bar{stroke:var(--dark);filter:none}
+  .hero-fab{right:18px;top:18px;transform:none;width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid #E1E4EA;
+    color:var(--ink);box-shadow:var(--soft-shadow);font-size:0;gap:0}
+  .hero-fab svg{width:18px;height:18px;stroke-width:2}
+  .hero-fab:hover{background:var(--lime);border-color:var(--lime)}
+  .day{background:rgba(255,255,255,.66);border-color:rgba(255,255,255,.9)}
+  .day.empty{background:transparent;border-color:#D3DAE5}
+  .day.today{background:var(--lime);border-color:var(--lime);box-shadow:0 12px 26px rgba(195,220,51,.35)}
+  .day .flag{background:var(--dark)}
+  .rt-t{background:rgba(243,245,248,.9)}
+  .tile{border-color:#E3E7ED}
+  .tile[aria-pressed="true"]{border-color:var(--lime-d);background:#F7FBDF}
+  .tile[aria-pressed="true"]::before{background-color:var(--dark);border-color:var(--dark)}
+
+  @media (max-width:900px){
+    .tnav{flex-wrap:wrap;padding:10px 14px;gap:10px}
+    .brand{min-width:0}
+    .brand b{display:none}
+    .tright{min-width:0;margin-left:auto}
+    .tright .sched-pill{display:none}
+    .tpill{order:3;width:100%;margin:0;overflow-x:auto;justify-content:space-between}
+    .tpill .rail-item::after{display:none}
+    .topbar{flex-wrap:wrap;padding:10px 16px 14px}
+    .topbar h1{font-size:30px}
+    .content{padding:0 16px 30px}
+  }
 </style>
 </head>
 <body>
@@ -564,6 +732,7 @@
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7.5a8 8 0 1011.4 0"/></symbol>
+  <symbol id="i-ne" viewBox="0 0 24 24"><path d="M7 17L17 7M8 7h9v9"/></symbol>
   <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="2"/><rect x="13" y="4" width="7" height="5" rx="2"/><rect x="13" y="11" width="7" height="9" rx="2"/><rect x="4" y="15" width="7" height="5" rx="2"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></symbol>
   <symbol id="i-pie" viewBox="0 0 24 24"><path d="M21 12A9 9 0 1112 3v9z"/><path d="M15 3.5A9 9 0 0120.5 9H15z"/></symbol>
@@ -574,33 +743,35 @@
 </svg>
 
 <div class="app">
-  <!-- ================================================================ 侧栏 -->
-  <aside class="rail">
-    <a class="rail-logo" href="#/overview" title="OTAOPS"><img src="/static/logo.png" alt="OTAOPS"></a>
-    <nav class="rail-nav" aria-label="主菜单">
-      <button class="rail-item" data-route="overview" data-group="overview" data-tip="总览" aria-label="总览"><span class="rail-ic"><img src="/static/icons/overview.png" alt=""></span></button>
-      <button class="rail-item" data-route="accounts" data-group="accounts" data-tip="账户管理" aria-label="账户管理"><span class="rail-ic"><img src="/static/icons/accounts.png" alt=""></span><span class="badge" id="badgeAcct"></span></button>
-      <button class="rail-item" data-route="runs" data-group="tasks" data-tip="任务管理" aria-label="任务管理"><span class="rail-ic"><img src="/static/icons/tasks.png" alt=""></span><span class="badge" id="badgeTasks"></span></button>
-      <button class="rail-item" data-route="sync-tables" data-group="sync" data-tip="远程同步" aria-label="远程同步"><span class="rail-ic"><img src="/static/icons/sync.svg" alt=""></span><span class="badge" id="badgeSync"></span></button>
-      <button class="rail-item" data-route="notify" data-group="notify" data-tip="通知管理" aria-label="通知管理"><span class="rail-ic"><img src="/static/icons/notify.png" alt=""></span></button>
-      <button class="rail-item" data-route="system" data-group="system" data-tip="系统设置" aria-label="系统设置"><span class="rail-ic"><img src="/static/icons/system.png" alt=""></span></button>
+  <!-- ================================================================ 顶部导航（模板：左 LOGO · 中间深色胶囊菜单 · 右侧状态） -->
+  <header class="tnav">
+    <a class="brand" href="#/overview" title="OTAOPS"><img src="/static/logo.png" alt=""><b>OTAOPS</b></a>
+    <nav class="tpill" aria-label="主菜单">
+      <button class="rail-item" data-route="overview" data-group="overview" data-tip="总览" aria-label="总览"><span class="rail-ic"><img src="/static/icons/overview.png" alt=""></span><span class="lbl">总览</span></button>
+      <button class="rail-item" data-route="accounts" data-group="accounts" data-tip="账户管理" aria-label="账户管理"><span class="rail-ic"><img src="/static/icons/accounts.png" alt=""></span><span class="lbl">账户管理</span><span class="badge" id="badgeAcct"></span></button>
+      <button class="rail-item" data-route="runs" data-group="tasks" data-tip="任务管理" aria-label="任务管理"><span class="rail-ic"><img src="/static/icons/tasks.png" alt=""></span><span class="lbl">任务管理</span><span class="badge" id="badgeTasks"></span></button>
+      <button class="rail-item" data-route="sync-tables" data-group="sync" data-tip="远程同步" aria-label="远程同步"><span class="rail-ic"><img src="/static/icons/sync.svg" alt=""></span><span class="lbl">远程同步</span><span class="badge" id="badgeSync"></span></button>
+      <button class="rail-item" data-route="notify" data-group="notify" data-tip="通知管理" aria-label="通知管理"><span class="rail-ic"><img src="/static/icons/notify.png" alt=""></span><span class="lbl">通知管理</span></button>
+      <button class="rail-item" data-route="system" data-group="system" data-tip="系统设置" aria-label="系统设置"><span class="rail-ic"><img src="/static/icons/system.png" alt=""></span><span class="lbl">系统设置</span></button>
     </nav>
-    <div class="rail-foot"><button class="health" id="health" data-route="system" data-tip="检查中…" aria-label="系统健康状态">
-      <svg class="i"><use href="#i-gear"/></svg></button></div>
-  </aside>
+    <div class="tright">
+      <div class="sched-pill" title="定时采集与补推的调度线程"><span class="dot" id="schedDot"></span><span id="schedText">调度 —</span></div>
+      <button class="health" id="health" data-route="system" data-tip="检查中…" aria-label="系统健康状态"><svg class="i"><use href="#i-gear"/></svg></button>
+      <div style="position:relative">
+        <button class="icon-btn" id="btnBell" title="需要处理的事项"><svg class="i"><use href="#i-bell"/></svg><span class="dotn" id="bellN"></span></button>
+        <div class="pop" id="bellPop"></div>
+      </div>
+      <div class="avatar" title="OTAOPS"><img src="/static/logo.png" alt=""></div>
+    </div>
+  </header>
 
   <!-- ================================================================ 主区 -->
   <main class="main">
     <header class="topbar">
-      <div><h1 id="pageTitle">总览</h1><div class="crumb" id="pageCrumb"></div><div class="ptabs" id="pageTabs"></div></div>
+      <div class="ttl"><h1 id="pageTitle">总览</h1><div class="crumb" id="pageCrumb"></div></div>
+      <div class="ptabs" id="pageTabs"></div>
       <div class="right">
-        <button class="btn btn--primary" id="btnNewTask" style="display:none;border-radius:20px;padding:9px 18px"><svg class="i" style="width:15px;height:15px"><use href="#i-plus"/></svg>新建采集任务</button>
-        <div class="sched-pill" title="定时采集与补推的调度线程"><span class="dot" id="schedDot"></span><span id="schedText">调度 —</span></div>
-        <div style="position:relative">
-          <button class="icon-btn" id="btnBell" title="需要处理的事项"><svg class="i"><use href="#i-bell"/></svg><span class="dotn" id="bellN"></span></button>
-          <div class="pop" id="bellPop"></div>
-        </div>
-        <div class="avatar" title="OTAOPS"><img src="/static/logo.png" alt=""></div>
+        <button class="btn btn--white" id="btnNewTask" style="display:none"><svg class="i" style="width:15px;height:15px"><use href="#i-plus"/></svg>新建采集任务</button>
       </div>
     </header>
 
@@ -627,7 +798,7 @@
               <circle class="bar" id="ovDonut" cx="30" cy="30" r="22" fill="none" stroke-width="9" stroke-linecap="round"
                       stroke-dasharray="138.2" stroke-dashoffset="138.2"/></svg>
             <span class="lbl pink" id="ovDonutLbl">推送成功</span></div>
-          <button class="hero-fab" data-route="runs"><svg class="i"><use href="#i-pie"/></svg>全部记录</button>
+          <button class="hero-fab" data-route="runs" title="全部运行记录" aria-label="全部运行记录"><svg class="i"><use href="#i-ne"/></svg></button>
         </div>
 
         <div class="ov-row">
