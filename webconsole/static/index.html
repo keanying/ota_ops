@@ -236,11 +236,31 @@
     background:linear-gradient(160deg,#B8A6FF,#7E6CF2);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
     font-size:10.5px;font-weight:800;letter-spacing:.06em;box-shadow:0 14px 30px rgba(110,90,240,.45),inset 0 1px 0 rgba(255,255,255,.35)}
   .hero-fab svg{width:26px;height:26px;stroke-width:2}
-  .ov-row{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:22px;align-items:start;margin-bottom:26px}
-  .ov-help{padding:18px 6px}
-  .ov-help h2{margin:0 0 10px;font-size:24px;font-weight:800}
-  .ov-help p{margin:0 0 20px;color:var(--muted);font-size:13.5px;line-height:1.6}
-  .ov-help small{display:block;margin-top:10px;color:var(--muted);font-size:12px}
+  .ov-row{display:grid;grid-template-columns:minmax(260px,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:22px;align-items:stretch;margin-bottom:26px}
+  /* 总览「需要处理」卡：状态图标 + 标题 + 待办清单 + 操作 + 下次定时 */
+  .oh{display:flex;flex-direction:column;--tone:#3BB346;--tone-50:#ECF7EC}
+  .oh[data-tone="warn"]{--tone:#E58A00;--tone-50:#FFF8EA}
+  .oh[data-tone="bad"]{--tone:#E91E63;--tone-50:#FDECEF}
+  .oh-main{display:flex;gap:14px;align-items:flex-start}
+  .oh-ic{flex:none;width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--tone-50);color:var(--tone)}
+  .oh-ic svg{width:22px;height:22px;stroke-width:2.2}
+  .oh h2{margin:1px 0 4px;font-size:19px;font-weight:800;letter-spacing:-.01em}
+  .oh p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .oh-list{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+  .oh-list:empty{display:none}
+  .oh-it{display:flex;align-items:center;gap:10px;background:rgba(243,245,248,.9);border-radius:12px;padding:8px 10px}
+  .oh-it > div{flex:1;min-width:0}
+  .oh-it b{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .oh-it small{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .oh-it .lk{flex:none;border:0;background:#fff;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:var(--ink);
+    box-shadow:0 1px 2px rgba(28,31,35,.08)}
+  .oh-it .lk:hover{background:var(--lime)}
+  .oh-it .pt{flex:none;width:6px;height:6px;border-radius:50%;background:var(--tone)}
+  .oh-acts{display:flex;gap:8px;margin-top:auto;padding-top:16px}
+  .oh-acts .btn{flex:1;padding:9px 12px}
+  .oh-acts .btn[hidden]{display:none}
+  .oh-foot{display:flex;align-items:center;gap:6px;margin-top:14px;padding-top:12px;border-top:1px dashed rgba(28,31,35,.1);color:var(--muted);font-size:12px}
+  .oh-foot svg{width:14px;height:14px}
   .btn-pill{border-radius:12px;padding:10px 18px}
   .ov-card{padding:18px 20px;margin:0}
   .ov-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -773,6 +793,9 @@
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7.5a8 8 0 1011.4 0"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-ne" viewBox="0 0 24 24"><path d="M7 17L17 7M8 7h9v9"/></symbol>
   <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="2"/><rect x="13" y="4" width="7" height="5" rx="2"/><rect x="13" y="11" width="7" height="9" rx="2"/><rect x="4" y="15" width="7" height="5" rx="2"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></symbol>
@@ -846,11 +869,15 @@
         </div>
 
         <div class="ov-row">
-          <div class="ov-help">
-            <h2 id="ovHelpT">—</h2>
-            <p id="ovHelpP"></p>
-            <button class="btn btn--primary btn-pill" id="ovHelpBtn">—</button>
-            <small id="ovHelpS"></small>
+          <div class="card ov-card oh" id="ovHelp" data-tone="ok">
+            <div class="ov-hd"><span>需要处理</span><small id="ovHelpN"></small></div>
+            <div class="oh-main">
+              <span class="oh-ic" id="ovHelpIc"></span>
+              <div style="min-width:0"><h2 id="ovHelpT">—</h2><p id="ovHelpP"></p></div>
+            </div>
+            <div class="oh-list" id="ovHelpL"></div>
+            <div class="oh-acts"><button class="btn btn--primary" id="ovHelpBtn">—</button><button class="btn" id="ovHelpBtn2" hidden></button></div>
+            <div class="oh-foot"><svg class="i"><use href="#i-clock"/></svg><span id="ovHelpS"></span></div>
           </div>
           <div class="card ov-card">
             <div class="ov-hd"><span>最近任务</span><small id="ovRecentN"></small></div>
@@ -1494,6 +1521,11 @@ document.addEventListener("click", (e) => {
   if (b && !b.closest(".modal")){ e.preventDefault(); go(b.dataset.route); }
 });
 $("btnNewTask").onclick = () => openTaskDialog(null);
+$("ovHelpL").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.login) openBrowser(b.dataset.login);
+  if (b.dataset.log) openRunLog(b.dataset.log);
+});
 
 /* ================================================================ 弹窗 */
 const closeHooks = {};
@@ -2986,24 +3018,51 @@ function renderOverview(){
   // ---- 需要处理
   const stale = active.filter(a => !a.is_fresh);
   const recentFail = runs.find(r => r.status === "failed");
-  const btn = $("ovHelpBtn");
+  // 近 7 天失败的采集：同一账号同一任务只算最新一次，之后又成功了就不算
+  const since = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), seen = new Set();
+  const fails = [];
+  for (const r of runs){
+    if ((r.created_at || "") < since) continue;
+    const key = r.account_id + "|" + r.label;
+    if (seen.has(key)) continue; seen.add(key);
+    if (r.status === "failed") fails.push(r);
+  }
+  const help = $("ovHelp"), btn = $("ovHelpBtn"), btn2 = $("ovHelpBtn2");
+  const ICON = {ok: "check", warn: "user", bad: "alert"};
+  const items = [];
+  btn2.hidden = true;
   if (stale.length){
-    $("ovHelpT").textContent = "需要登录";
-    $("ovHelpP").textContent = `${stale.map(a => a.name || a.account_id).slice(0, 3).join("、")}${stale.length > 3 ? ` 等 ${stale.length} 个账号` : ""} 登录态失效，定时采集会跳过它们。`;
+    help.dataset.tone = "warn";
+    $("ovHelpT").textContent = `${stale.length} 个账号需要登录`;
+    $("ovHelpP").textContent = "登录态失效，定时采集会跳过它们。登录一次即可恢复。";
+    stale.slice(0, 3).forEach(a => items.push(`<div class="oh-it">${avatar(a.name || a.account_id, a.account_id)}
+      <div><b>${esc(a.name || a.account_id)}</b><small>${esc(stateOf(a))}${a.login_at ? " · 上次登录 " + esc(a.login_at.replace("T", " ").slice(5, 16)) : ""}</small></div>
+      <button class="lk" data-login="${esc(a.account_id)}">去登录</button></div>`));
     btn.textContent = `去登录 ${stale[0].name || stale[0].account_id}`;
     btn.onclick = () => openBrowser(stale[0].account_id);
-  } else if (recentFail){
-    $("ovHelpT").textContent = "有采集失败";
-    $("ovHelpP").textContent = `${acctName(recentFail.account_id)} · ${recentFail.label}${recentFail.detail ? "：" + recentFail.detail : ""}`.slice(0, 120);
+    btn2.hidden = false; btn2.textContent = "账户管理"; btn2.onclick = () => go("accounts");
+  } else if (fails.length){
+    help.dataset.tone = "bad";
+    $("ovHelpT").textContent = `${fails.length} 个采集失败`;
+    $("ovHelpP").textContent = fails[0].detail ? `最近一次：${fails[0].detail}` : "近 7 天有失败且还没重跑成功的采集。";
+    fails.slice(0, 3).forEach(r => items.push(`<div class="oh-it"><span class="pt"></span>
+      <div><b>${esc(acctName(r.account_id))}</b><small>${esc(r.label)} · ${esc((r.created_at || "").slice(5, 16))}</small></div>
+      <button class="lk" data-log="${esc(r.run_id)}">日志</button></div>`));
     btn.textContent = "查看失败日志";
-    btn.onclick = () => openRunLog(recentFail.run_id);
+    btn.onclick = () => openRunLog(fails[0].run_id);
+    if (canRerun(fails[0])){ btn2.hidden = false; btn2.textContent = "按原参数重跑"; btn2.onclick = () => rerun(fails[0].run_id); }
   } else {
+    help.dataset.tone = "ok";
     $("ovHelpT").textContent = "一切正常";
-    $("ovHelpP").textContent = "所有账号登录态有效，最近没有失败的采集。需要补数据时直接新建任务。";
+    $("ovHelpP").textContent = "所有账号登录态有效，近 7 天没有失败的采集。";
     btn.textContent = "新建采集任务";
     btn.onclick = () => openTaskDialog(null);
+    btn2.hidden = false; btn2.textContent = "运行记录"; btn2.onclick = () => go("runs");
   }
-  $("ovHelpS").textContent = status.scheduler_alive ? `下次定时采集 ${status.next_collect_daily || "未启用"}` : "调度未启动";
+  $("ovHelpIc").innerHTML = `<svg class="i"><use href="#i-${ICON[help.dataset.tone]}"/></svg>`;
+  $("ovHelpN").textContent = stale.length + fails.length ? `${stale.length + fails.length} 项` : "";
+  $("ovHelpL").innerHTML = items.join("");
+  $("ovHelpS").textContent = status.scheduler_alive ? `下次定时采集 ${status.next_collect_daily || "未启用"}` : "调度未启动，定时采集不会执行";
   // ---- 最近任务
   const recent = runs.slice(0, 2);
   $("ovRecentN").textContent = runs.length ? `共 ${runs.length} 条` : "";
