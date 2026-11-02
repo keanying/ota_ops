@@ -72,8 +72,20 @@
   .rail-item .badge:empty{display:none}
   .rail-item:focus-visible{outline:none}
   .rail-item:focus-visible .rail-ic{outline:2px solid var(--orange);outline-offset:3px}
-  .rail-foot{margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--muted);font-size:10.5px;text-align:center}
-  .rail-foot .dot{width:10px;height:10px}
+  .rail-foot{margin-top:12px;display:flex;flex-direction:column;align-items:center}
+  /* 健康状态：绿色齿轮转动 = 正常；红色停转 = 不正常 */
+  .health{position:relative;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;border:0;background:#fff;cursor:pointer;
+    box-shadow:0 6px 16px rgba(40,60,120,.08);color:#B8BFCF;transition:color .3s,box-shadow .3s}
+  .health svg{width:24px;height:24px;stroke-width:2}
+  .health.ok{color:#19B37E;box-shadow:0 0 0 3px rgba(25,179,126,.12),0 6px 18px rgba(25,179,126,.35)}
+  .health.ok svg{animation:spin 3.2s linear infinite;filter:drop-shadow(0 0 4px rgba(25,179,126,.6))}
+  .health.bad{color:#E5484D;box-shadow:0 0 0 3px rgba(229,72,77,.14),0 6px 18px rgba(229,72,77,.35);animation:alarm 1.4s ease-in-out infinite}
+  @keyframes alarm{0%,100%{box-shadow:0 0 0 3px rgba(229,72,77,.14),0 6px 18px rgba(229,72,77,.35)}50%{box-shadow:0 0 0 7px rgba(229,72,77,.06),0 6px 18px rgba(229,72,77,.2)}}
+  @media (prefers-reduced-motion:reduce){.health.ok svg,.health.bad{animation:none}}
+  .health::after{content:attr(data-tip);position:absolute;left:58px;top:50%;transform:translate(-4px,-50%);white-space:pre;text-align:left;
+    background:#2B2F3D;color:#fff;font-size:12px;font-weight:500;line-height:1.6;padding:7px 11px;border-radius:8px;pointer-events:none;
+    opacity:0;transition:opacity .12s,transform .12s;z-index:40;box-shadow:0 8px 20px rgba(0,0,0,.2)}
+  .health:hover::after,.health:focus-visible::after{opacity:1;transform:translate(0,-50%)}
 
   /* 页内标签（替代原来的二级菜单） */
   .ptabs{display:flex;gap:6px;margin-top:10px}
@@ -543,7 +555,8 @@
       <button class="rail-item" data-route="notify" data-group="notify" data-tip="通知管理" aria-label="通知管理"><span class="rail-ic"><img src="/static/icons/notify.png" alt=""></span></button>
       <button class="rail-item" data-route="system" data-group="system" data-tip="系统设置" aria-label="系统设置"><span class="rail-ic"><img src="/static/icons/system.png" alt=""></span></button>
     </nav>
-    <div class="rail-foot" title="调度线程状态（绿色 = 运行中）"><span class="dot" id="schedDot2"></span></div>
+    <div class="rail-foot"><button class="health" id="health" data-route="system" data-tip="检查中…" aria-label="系统健康状态">
+      <svg class="i"><use href="#i-gear"/></svg></button></div>
   </aside>
 
   <!-- ================================================================ 主区 -->
@@ -2219,10 +2232,20 @@ $("btnCsPreview").onclick = async () => {
 };
 
 /* ================================================================ 状态（调度 / 推送记录 / 提醒） */
+/* 健康：控制台能连上，且调度线程在跑 */
+function setHealth(ok, tip){
+  const h = $("health");
+  h.className = "health " + (ok ? "ok" : "bad");
+  h.dataset.tip = tip;
+  h.setAttribute("aria-label", `系统健康状态：${ok ? "正常" : "异常"}`);
+}
 async function loadStatus(){
-  try { status = await api("/api/sync/status"); } catch (e){ return; }
+  try { status = await api("/api/sync/status"); }
+  catch (e){ setHealth(false, "不健康：控制台连不上\n检查控制台进程是否在运行、网络是否通"); return; }
+  setHealth(status.scheduler_alive, status.scheduler_alive
+    ? `健康：调度运行中\n下次采集 ${status.next_collect_daily || "未启用"}\n下次补推 ${status.next_daily || "未启用"}`
+    : "不健康：调度线程未启动\n定时采集和补推都不会运行，重启控制台");
   $("schedDot").className = "dot " + (status.scheduler_alive ? "ok" : "stop");
-  $("schedDot2").className = "dot " + (status.scheduler_alive ? "ok" : "stop");
   $("schedText").textContent = status.scheduler_alive
     ? `调度运行中 · 下次采集 ${(status.next_collect_daily || "未启用").slice(5)}` : "调度未启动";
   $("syNext").textContent = `下次补推：日 ${status.next_daily || "未启用"} · 月 ${status.next_monthly || "未启用"}`;
