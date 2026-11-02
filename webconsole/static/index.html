@@ -236,6 +236,13 @@
   pre.json{background:var(--base);border:1px solid var(--edge);border-radius:var(--r);padding:10px 12px;
     font:12px/1.55 var(--mono);overflow:auto;max-height:320px;margin:8px 0 0}
 
+  .sync-item{padding:7px 8px;margin:0 -8px;border-bottom:1px solid var(--edge);cursor:pointer;border-radius:4px}
+  .sync-item:hover{background:#1E2730}
+  .cf-grid{display:grid;grid-template-columns:minmax(64px,max-content) 1fr;gap:8px 16px;font-size:13px;
+    margin:4px 0 0;padding:10px 12px;background:var(--base);border:1px solid var(--edge);border-radius:var(--r)}
+  .cf-grid span{color:var(--muted);font:12.5px var(--mono);word-break:break-all;max-width:300px}
+  .cf-grid b{font:500 12.5px var(--mono);word-break:break-all}
+  .cf-lead{margin:0 0 12px;font-size:13.5px}
   .toast{position:fixed;right:18px;bottom:18px;z-index:90;max-width:380px;background:var(--raise);
     border:1px solid var(--edge-hi);border-left:3px solid var(--signal);border-radius:var(--r);
     padding:11px 14px;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.55)}
@@ -408,6 +415,15 @@
             <div class="field"><label>Key 头名</label><input id="syHeader" placeholder="xpftkey"></div>
             <div class="field"><label>Key</label><input id="syKey" type="password" placeholder="pfk_…"></div>
             <div class="field"><label>每批行数</label><input class="num" id="syBatch" type="number" min="1" max="2000" value="200"></div>
+            <div class="field"><label>代理</label>
+              <select id="syProxyMode">
+                <option value="auto">自动（系统代理连不上就直连）</option>
+                <option value="none">直连，不走代理</option>
+                <option value="system">跟随系统代理</option>
+                <option value="custom">指定代理…</option>
+              </select></div>
+            <div class="field" id="syProxyRow" style="display:none"><label></label>
+              <input id="syProxyUrl" placeholder="http://127.0.0.1:7890"></div>
           </div>
         </div>
 
@@ -429,7 +445,7 @@
         </div>
 
         <div class="card">
-          <div class="card-hd"><h2>推送记录</h2><small>最近 10 次</small></div>
+          <div class="card-hd"><h2>推送记录</h2><small>点击查看日志</small></div>
           <div class="card-bd" id="syHistory" style="font-size:12.5px">暂无记录</div>
         </div>
       </div>
@@ -668,6 +684,7 @@
     <div class="dlg-ft">
       <label class="check left" style="margin:0"><input type="checkbox" id="lFollow" checked> 自动滚到底</label>
       <button class="btn" id="btnLogCopy">复制日志</button>
+      <button class="btn" id="btnLogResult" style="display:none">查看结果与报文</button>
       <button class="btn" id="btnLogRerun">重跑</button>
       <button class="btn btn--stop" id="btnLogStop">停止任务</button>
       <button class="btn" data-close="mLog">关闭</button>
@@ -706,6 +723,18 @@
     <div class="dlg-ft">
       <button class="btn" id="btnCfgTest">发测试通知</button>
       <button class="btn btn--go" id="btnCfgSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ 确认 -->
+<div class="modal" id="mConfirm">
+  <div class="dlg" style="width:640px">
+    <div class="dlg-hd"><h3 id="cTitle">确认</h3><button class="x" data-close="mConfirm">×</button></div>
+    <div class="dlg-bd" id="cBody"></div>
+    <div class="dlg-ft">
+      <button class="btn" data-close="mConfirm">取消</button>
+      <button class="btn btn--go" id="cOk">确定</button>
     </div>
   </div>
 </div>
@@ -766,10 +795,33 @@ document.querySelectorAll(".nav button").forEach(b => b.onclick = () => showPage
 /* ---------------------------------------------------------------- 弹窗 */
 const closeHooks = {};
 function openModal(id){ $(id).classList.add("on"); }
-function closeModal(id){
-  if (closeHooks[id] && closeHooks[id]() === false) return;
+function closeModal(id, force){
+  if (!force && closeHooks[id] && closeHooks[id]() === false) return;
   $(id).classList.remove("on");
 }
+
+/* 页面内确认框，替代浏览器自带的 confirm()：样式一致，能把「要做什么」列清楚 */
+let confirmResolve = null;
+function askConfirm({title = "确认", lead = "", rows = [], note = "", ok = "确定", danger = false}){
+  $("cTitle").textContent = title;
+  $("cBody").innerHTML =
+    (lead ? `<p class="cf-lead">${lead}</p>` : "") +
+    (rows.length ? `<div class="cf-grid">${rows.map(([k, v]) =>
+        `<span>${esc(k)}</span><b>${esc(v)}</b>`).join("")}</div>` : "") +
+    (note ? `<p class="note" style="margin-top:12px">${note}</p>` : "");
+  $("cOk").textContent = ok;
+  $("cOk").className = "btn " + (danger ? "btn--stop" : "btn--go");
+  openModal("mConfirm");
+  setTimeout(() => $("cOk").focus(), 30);
+  return new Promise(res => { confirmResolve = res; });
+}
+function settleConfirm(v){
+  const r = confirmResolve; confirmResolve = null;
+  closeModal("mConfirm", true);
+  if (r) r(v);
+}
+closeHooks.mConfirm = () => { settleConfirm(false); return false; };
+$("cOk").onclick = () => settleConfirm(true);
 document.addEventListener("click", (e) => {
   const c = e.target.closest("[data-close]");
   if (c){ closeModal(c.dataset.close); return; }
@@ -981,7 +1033,13 @@ function paintBrowserHeader(title){
 }
 // 关弹窗只断开画面，浏览器保持运行；登录进行中要确认，断开会中止登录
 closeHooks.mBrowser = () => {
-  if (loginWs && !confirm("登录还在进行中，关闭会中止这次登录。确定关闭？")) return false;
+  if (loginWs){
+    askConfirm({title: "关闭浏览器窗口", lead: "登录还在进行中，关闭窗口会中止这次登录。",
+                note: "浏览器本身会继续运行，之后可以重新打开窗口再登录。",
+                ok: "中止登录并关闭", danger: true})
+      .then(ok => { if (ok){ abortLogin(); closeModal("mBrowser"); } });
+    return false;
+  }
   if (loginWs){ try { loginWs.send(JSON.stringify({action:"abort"})); loginWs.close(); } catch(e){} }
   if (ws){ ws.onclose = null; ws.close(); ws = null; }
   stopVnc(); clearAttention();
@@ -1205,8 +1263,10 @@ $("btnRelease").onclick = async () => {
     if (!r.ok){
       log(r.detail, "warn");
       if (r.holder_note) log(r.holder_note, "warn");
-      if (confirm(`${r.detail}\n\n${r.holder_note || ""}\n\n强制释放会清掉占用记录并停止常驻浏览器。\n`
-                  + `如果那个进程确实还在用同一个 profile，请先结束它再继续。\n\n要强制释放吗？`)){
+      if (await askConfirm({title: "强制释放 profile", lead: esc(r.detail),
+            rows: r.holder_note ? [["占用者", r.holder_note]] : [],
+            note: "强制释放会清掉占用记录并停止常驻浏览器。如果那个进程确实还在用同一个 profile，请先结束它再继续。",
+            ok: "强制释放", danger: true})){
         r = await post(`/api/browser/${encodeURIComponent(current)}/release?force=true`);
         (r.steps || []).forEach(x => log("  " + x));
       }
@@ -1314,8 +1374,12 @@ $("btnSms").onclick = () => {
   clearAttention(); setStep("sms", "now");
 };
 $("smsCode").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnSms").onclick(); });
+function abortLogin(){
+  const sock = loginWs; loginWs = null;
+  if (sock){ try { sock.send(JSON.stringify({action:"abort"})); sock.close(); } catch(e){} }
+}
 $("btnAbortLogin").onclick = () => {
-  if (loginWs){ loginWs.send(JSON.stringify({action:"abort"})); loginWs.close(); }
+  abortLogin();
   document.querySelectorAll(".steps li.now").forEach(li => li.className = "bad");
   clearAttention();
 };
@@ -1391,18 +1455,72 @@ async function rerun(id, openLog = true){
 }
 
 /* ---------------------------------------------------------------- 运行日志弹窗 */
-let logRun = null, logNext = 0, logTimer = null;
+let logRun = null, logNext = 0, logTimer = null, logKind = "run", logResult = null;
 async function openRunLog(runId){
   if (!runId) return;
-  logRun = runId; logNext = 0;
+  logKind = "run"; logRun = runId; logNext = 0; logResult = null;
+  $("btnLogResult").style.display = "none";
   $("runLog").innerHTML = ""; $("lMeta").innerHTML = "";
   $("lTitle").textContent = "运行日志"; $("lTag").textContent = "加载中"; $("lTag").className = "tag";
   openModal("mLog");
   await pollRunLog();
 }
+function appendLogLines(lines){
+  const box = $("runLog");
+  if (box.firstChild && box.firstChild.dataset && box.firstChild.dataset.ph) box.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  for (const ln of lines){
+    const row = document.createElement("div");
+    const t = document.createElement("span"); t.className = "t"; t.textContent = ln.at;
+    const m = document.createElement("span"); m.className = ln.level; m.textContent = ln.message;
+    row.append(t, m); frag.appendChild(row);
+  }
+  box.appendChild(frag);
+  if (lines.length && $("lFollow").checked) box.scrollTop = box.scrollHeight;
+}
+function logPlaceholder(text){
+  const box = $("runLog");
+  if (!box.children.length) box.innerHTML = `<div class="t" data-ph="1">${esc(text)}</div>`;
+}
+
+/* ---- 推送日志：和采集日志共用一个弹窗 ---- */
+const SYNC_STATUS = {queued:["排队中","info"], running:["推送中","info"], success:["完成","ok"], failed:["有失败","bad"]};
+const SYNC_REASON = {manual:"手动", schedule:"定时补推", after_collect:"采集后"};
+async function openSyncLog(jobId){
+  if (!jobId) return;
+  logKind = "sync"; logRun = jobId; logNext = 0; logResult = null;
+  $("runLog").innerHTML = ""; $("lMeta").innerHTML = "";
+  $("lTitle").textContent = "推送日志"; $("lTag").textContent = "加载中"; $("lTag").className = "tag";
+  ["btnLogRerun","btnLogStop","btnLogResult"].forEach(id => $(id).style.display = "none");
+  openModal("mLog");
+  await pollSyncLog();
+}
+async function pollSyncLog(){
+  clearTimeout(logTimer);
+  if (!logRun || logKind !== "sync" || !$("mLog").classList.contains("on")) return;
+  const id = logRun;
+  let d;
+  try { d = await api(`/api/sync/jobs/${encodeURIComponent(id)}/log?after=${logNext}`); }
+  catch (e){ $("lTag").textContent = e.message; $("lTag").className = "tag bad"; return; }
+  if (id !== logRun) return;
+  const j = d.job, [st, cls] = SYNC_STATUS[j.status] || [j.status, ""];
+  $("lTitle").textContent = j.label;
+  $("lTag").textContent = st; $("lTag").className = "tag " + cls;
+  $("lMeta").innerHTML = [["触发", SYNC_REASON[j.reason] || j.reason], ["开始", j.started_at || "—"],
+    ["结束", j.finished_at || "—"], ["耗时", j.duration ? j.duration + "s" : "—"]]
+    .map(([k, v]) => `<span>${k} <b style="color:var(--ink);font-family:var(--mono)">${esc(v)}</b></span>`).join("");
+  appendLogLines(d.lines);
+  logNext = d.next;
+  logPlaceholder(j.status === "queued" ? "排队中…" : "没有日志");
+  if (d.result){ logResult = d.result; $("btnLogResult").style.display = ""; }
+  if (j.status === "queued" || j.status === "running") logTimer = setTimeout(pollSyncLog, 800);
+  else loadSchedStatus();
+}
+$("btnLogResult").onclick = () => { if (logResult) showSyncResult($("lTitle").textContent, logResult); };
+
 async function pollRunLog(){
   clearTimeout(logTimer);
-  if (!logRun || !$("mLog").classList.contains("on")) return;
+  if (!logRun || logKind !== "run" || !$("mLog").classList.contains("on")) return;
   const id = logRun;
   let d;
   try { d = await api(`/api/runs/${encodeURIComponent(id)}/log?after=${logNext}`); }
@@ -1416,18 +1534,9 @@ async function pollRunLog(){
     ["开始", r.started_at || "—"], ["结束", r.finished_at || "—"], ["耗时", fmtDur(r.duration)],
   ].map(([k, v]) => `<span>${k} <b style="color:var(--ink);font-family:var(--mono)">${esc(v)}</b></span>`).join("")
     + (r.detail ? `<span style="color:var(--signal)">${esc(r.detail)}</span>` : "");
-  const frag = document.createDocumentFragment();
-  for (const ln of d.lines){
-    const row = document.createElement("div");
-    const t = document.createElement("span"); t.className = "t"; t.textContent = ln.at;
-    const m = document.createElement("span"); m.className = ln.level; m.textContent = ln.message;
-    row.append(t, m); frag.appendChild(row);
-  }
-  box.appendChild(frag);
+  appendLogLines(d.lines);
   logNext = d.next;
-  if (d.lines.length && $("lFollow").checked) box.scrollTop = box.scrollHeight;
-  if (!box.children.length) box.innerHTML = `<div class="t">${r.status === "queued" ? "排队中，轮到时开始输出…" : "没有日志"}</div>`;
-  else if (box.firstChild && box.firstChild.className === "t") box.removeChild(box.firstChild);
+  logPlaceholder(r.status === "queued" ? "排队中，轮到时开始输出…" : "没有日志");
   const live = r.status === "queued" || r.status === "running";
   $("btnLogStop").style.display = live ? "" : "none";
   $("btnLogStop").textContent = r.status === "queued" ? "取消排队" : "停止任务";
@@ -1437,11 +1546,11 @@ async function pollRunLog(){
 }
 closeHooks.mLog = () => { clearTimeout(logTimer); logRun = null; return true; };
 $("btnLogStop").onclick = async () => {
-  if (!logRun) return;
+  if (!logRun || logKind !== "run") return;
   try { const r = await post(`/api/runs/${encodeURIComponent(logRun)}/stop`); toast(r.message); }
   catch (e){ toast(e.message); }
 };
-$("btnLogRerun").onclick = () => { if (logRun) rerun(logRun); };
+$("btnLogRerun").onclick = () => { if (logRun && logKind === "run") rerun(logRun); };
 $("btnLogCopy").onclick = async () => {
   const text = [...$("runLog").children].map(d => d.textContent).join("\n");
   try { await navigator.clipboard.writeText(text); toast("已复制"); }
@@ -1620,17 +1729,18 @@ async function loadSchedStatus(){
     $("schedLogs").innerHTML = lg.length ? lg.slice(0, 60).map(l =>
       `<div><span class="t">${esc(l.at)}</span><span class="${l.level === "error" ? "error" : l.level === "warn" ? "warn" : ""}">${esc(l.message)}</span></div>`
     ).join("") : '<div class="t">暂无</div>';
-    const h = d.history || [];
+    const h = d.sync_jobs || [];
     $("syHistory").innerHTML = h.length ? h.map(x => {
-      const parts = Object.values(x.tables || {}).map(t =>
-        `${esc(t.remote_table || t.table)} ${t.rows} 行${t.ok ? "" : ` <span style="color:var(--stop)">✗ ${esc(t.error)}</span>`}`);
-      const why = {schedule:"定时", after_collect:"采集后", manual:"手动"}[x.reason] || x.reason || "";
-      return `<div style="padding:6px 0;border-bottom:1px solid var(--edge)">
-        <div><span class="mono muted">${esc(x.started_at.slice(5, 16))}</span>
-          <span class="tag ${x.ok ? "ok" : "bad"}" style="margin-left:6px">${x.dry_run ? "试运行" : (x.ok ? "成功" : "有失败")}</span>
-          <span class="muted" style="margin-left:6px">${esc(why)} · ${esc(x.job)}</span></div>
-        <div class="muted" style="margin-top:2px">${parts.join("<br>") || "无数据"}</div></div>`;
-    }).join("") : "暂无记录";
+      const [st, cls] = SYNC_STATUS[x.status] || [x.status, ""];
+      const parts = (x.tables || []).map(t =>
+        `${esc(t.table)} ${t.rows} 行${t.ok ? "" : ` <span style="color:var(--stop)">✗</span>`}`);
+      return `<div class="sync-item" data-job="${esc(x.id)}" title="点击查看日志">
+        <div><span class="mono muted">${esc(x.created_at.slice(5, 16))}</span>
+          <span class="tag ${x.dry_run && x.status === "success" ? "" : cls}" style="margin-left:6px">${x.dry_run ? "试运行 · " : ""}${st}</span>
+          <span class="muted" style="margin-left:6px">${esc(SYNC_REASON[x.reason] || x.reason)}</span></div>
+        <div style="margin-top:2px">${esc(x.label)}</div>
+        <div class="muted" style="margin-top:2px">${parts.join(" · ") || esc(x.error) || (x.status === "running" ? "推送中…" : "无数据")}</div></div>`;
+    }).join("") : "暂无记录（控制台重启后清空）";
   } catch (e){ /* 状态查询失败不打扰 */ }
 }
 
@@ -1643,6 +1753,10 @@ async function loadSync(){
   $("syHeader").value = d.header_name || "xpftkey";
   $("syKey").value = d.key || "";
   $("syBatch").value = d.batch_size || 200;
+  const px = d.proxy || "auto";
+  $("syProxyMode").value = ["auto","none","system"].includes(px) ? px : "custom";
+  $("syProxyUrl").value = ["auto","none","system"].includes(px) ? "" : px;
+  $("syProxyRow").style.display = $("syProxyMode").value === "custom" ? "" : "none";
   $("syAfter").checked = d.after_collect !== false;
   const sc = d.schedule || {};
   $("syDaily").checked = !!sc.daily_enabled;
@@ -1732,8 +1846,8 @@ $("syTables").addEventListener("click", (e) => {
   const f = e.target.dataset && e.target.dataset.f;
   if (f === "dry1" || f === "push1"){
     const name = card.querySelector("h2").textContent;
-    if (f === "push1" && !confirm(`立即把 ${name} 按回溯窗口推送到下游？`)) return;
-    runSync("all", f === "dry1", [card.dataset.key], name);
+    if (f === "dry1"){ runSync("all", true, [card.dataset.key], name); return; }
+    confirmPush([card.dataset.key]).then(ok => { if (ok) runSync("all", false, [card.dataset.key], name); });
     return;
   }
   if (f === "all" || f === "none" || f === "nometa"){
@@ -1784,6 +1898,7 @@ function collectSyncPatch(){
     header_name: $("syHeader").value.trim() || "xpftkey",
     key: $("syKey").value,
     batch_size: parseInt($("syBatch").value, 10) || 200,
+    proxy: $("syProxyMode").value === "custom" ? ($("syProxyUrl").value.trim() || "auto") : $("syProxyMode").value,
     after_collect: $("syAfter").checked,
     tables,
     schedule: {
@@ -1810,15 +1925,11 @@ async function runSync(job, dry, tables, name){
   // 先存再跑：页面上刚改的字段配置要生效
   if (!(await saveSync(true))) return;
   const label = (dry ? "试运行" : "推送") + (name ? ` ${name}` : "全部");
-  const btns = [...document.querySelectorAll('#btnSyncDry,#btnSyncAll,[data-f="dry1"],[data-f="push1"]')];
-  btns.forEach(b => b.disabled = true);
-  toast(`${label} 进行中…`);
   try {
-    const r = await post("/api/sync/run", {job, dry_run: dry, tables: tables || null});
-    showSyncResult(label, r);
+    const r = await post("/api/sync/run", {job, dry_run: dry, tables: tables || null, background: true});
+    openSyncLog(r.job_id);
     loadSchedStatus();
   } catch (e){ toast(e.message); }
-  btns.forEach(b => b.disabled = false);
 }
 function showSyncResult(label, r){
   $("dryTitle").textContent = `${label} · ${r.ok ? "完成" : "有失败"} · 耗时 ${r.elapsed}s`;
@@ -1837,9 +1948,52 @@ function showSyncResult(label, r){
   openModal("mDry");
 }
 $("btnSyncDry").onclick = () => runSync("all", true);
-$("btnSyncAll").onclick = () => {
-  if (confirm("立即把所有参与同步的表按各自回溯窗口推送到下游？")) runSync("all", false);
+$("syProxyMode").onchange = () => {
+  $("syProxyRow").style.display = $("syProxyMode").value === "custom" ? "" : "none";
 };
+$("syHistory").addEventListener("click", (e) => {
+  const it = e.target.closest(".sync-item"); if (it) openSyncLog(it.dataset.job);
+});
+$("btnSyncAll").onclick = () => {
+  confirmPush(null).then(ok => { if (ok) runSync("all", false); });
+};
+
+/* 推送前把「推哪张表、哪段时间、推到哪」摆出来，而不是一句「确定吗」 */
+function ymd(d){ return d.toISOString().slice(0, 10); }
+function pushWindow(period, lookback){
+  const n = Math.max(1, lookback || 1), now = new Date();
+  if (period === "daily"){
+    const end = new Date(now); end.setDate(end.getDate() - 1);
+    const start = new Date(end); start.setDate(start.getDate() - (n - 1));
+    return n === 1 ? ymd(end) : `${ymd(start)} ~ ${ymd(end)}`;
+  }
+  const m = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const end = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const start = new Date(end.getFullYear(), end.getMonth() - (n - 1), 1);
+  return n === 1 ? m(end) : `${m(start)} ~ ${m(end)}`;
+}
+function confirmPush(keys){
+  const rows = [];
+  document.querySelectorAll("#syTables .tcard").forEach(card => {
+    const key = card.dataset.key, meta = (syncMeta.tables_meta || {})[key] || {};
+    const on = card.querySelector('[data-f="on"]').checked;
+    if (keys ? !keys.includes(key) : !on) return;
+    const remote = card.querySelector('[data-f="rt"]').value.trim() || meta.name;
+    const lb = parseInt(card.querySelector('[data-f="lb"]').value, 10) || 1;
+    const fields = card.querySelectorAll('[data-f="col"]:checked').length;
+    rows.push([meta.name === remote ? meta.name : `${meta.name} → ${remote}`,
+               `${pushWindow(meta.period, lb)} · ${fields} 个字段`]);
+  });
+  if (!rows.length){ toast("没有参与同步的表"); return Promise.resolve(false); }
+  const url = $("syUrl").value.trim() || "（未配置地址）";
+  return askConfirm({
+    title: keys ? "立即推送这张表" : "立即推送全部",
+    lead: `把下面 ${rows.length} 张表的本地数据推送到下游，按各表「回溯」窗口取数，下游按 pkId 新增或更新。`,
+    rows: [...rows, ["下游地址", url]],
+    note: "推送不会改动本地数据，重复推送是安全的。推送过程会打开实时日志。",
+    ok: "开始推送",
+  });
+}
 
 /* ================================================================ 通知设置 */
 async function loadSettings(){

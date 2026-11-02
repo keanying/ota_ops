@@ -81,8 +81,12 @@ def _reachable(proxy_url: str, timeout: float = 1.5) -> bool:
         return False
 
 
-def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL) -> ProxyPlan:
-    """按配置 ``ctrip.proxy`` 决定访问携程的代理。结果在进程内缓存（只探测一次）。"""
+def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL,
+                  log=None) -> ProxyPlan:
+    """按配置决定访问 ``url`` 走什么代理（默认是携程；推送下游时传下游地址）。
+
+    auto 的探测结果按目标主机在进程内缓存，每个主机只探测一次。
+    """
     mode = (mode or "auto").strip()
     key = mode.lower()
     if key in ("none", "direct", "off", "false", "no"):
@@ -92,9 +96,10 @@ def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL) -> ProxyPlan:
     if key == "system":
         return ProxyPlan("system", _system_proxy_for(url), "跟随系统代理")
 
+    cache_key = urlparse(url).hostname or url
     with _plan_lock:
-        if "auto" in _plan_cache:
-            return _plan_cache["auto"]
+        if cache_key in _plan_cache:
+            return _plan_cache[cache_key]
         sys_proxy = _system_proxy_for(url)
         if not sys_proxy:
             plan = ProxyPlan("system", note="系统未配置代理，直连")
@@ -103,9 +108,10 @@ def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL) -> ProxyPlan:
         else:
             plan = ProxyPlan("direct", sys_proxy,
                              f"系统代理 {sys_proxy} 连不上（代理程序没开？），已改为直连。"
-                             "确实需要代理请先打开代理程序；想固定直连可在 config.yaml 设 ctrip.proxy: none")
-            logger.warning(plan.note)
-        _plan_cache["auto"] = plan
+                             "确实需要代理请先打开代理程序；想固定直连：采集在 config.yaml 设 ctrip.proxy: none，"
+                             "推送在「远程同步 → 下游接口 → 代理」选直连")
+            (log or logger).warning(plan.note)
+        _plan_cache[cache_key] = plan
         return plan
 
 

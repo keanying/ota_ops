@@ -466,12 +466,15 @@ def _after_collect_push(task: "CollectTask") -> None:
 
     job = "daily" if task.job == "day" else "monthly"
     window = task.sync_window
-    task._push("info", f"开始推送到下游接口（{job}{'，窗口 ' + '~'.join(window) if window else ''}）")
+    sj = SyncJob(f"采集后推送 · {task.account_id} · {task.label}", "after_collect",
+                 mirror=lambda lv, m: task._push(lv, m))
+    task._push("info", f"开始推送到下游接口（{job}{'，窗口 ' + '~'.join(window) if window else ''}），"
+                       f"推送日志编号 {sj.id}")
     try:
-        result = datasync.run_sync(_cfg, sc, job=job,
-                                   account_ids=[task.account_id],
-                                   window=window, reason="after_collect",
-                                   on_log=lambda lv, m: task._push(lv, m))
+        result = sj.run(job=job, account_ids=[task.account_id], window=window, sc=sc)
+        if result is None:
+            task._push("error", f"推送下游失败（数据已入库，可稍后重推）：{sj.error}")
+            return
         for item in result.get("tables", {}).values():
             if item["ok"]:
                 task._push("info", f"→ {item['remote_table']}：{item['rows']} 行，"
@@ -481,7 +484,7 @@ def _after_collect_push(task: "CollectTask") -> None:
                 # 第一反应是这次采集白跑了，会去重采一遍
                 task._push("error",
                            f"→ {item['remote_table']} 推送失败：{item['error']}"
-                           f"（数据已入库，可在「同步」标签手动重推）")
+                           f"（数据已入库，可在「远程同步」手动重推）")
     except Exception as exc:  # noqa: BLE001
         task._push("error", f"推送下游失败（数据已入库，可稍后重推）：{exc}")
 
@@ -1248,12 +1251,114 @@ async def api_sync_config_set(patch: dict) -> JSONResponse:
                          "next_monthly": _fmt_dt(datasync.next_monthly(sc.schedule))})
 
 
+# =============================================================================
+# 推送任务：每次推送（手动 / 单表 / 采集后 / 定时）都是一个带实时日志的任务
+# =============================================================================
+
+_sync_jobs: "dict[str, SyncJob]" = {}
+
+
+class SyncJob:
+    """一次推送。日志逐行记下来，页面轮询 /api/sync/jobs/{id}/log 实时看。"""
+
+    def __init__(self, label: str, reason: str, dry_run: bool = False, mirror=None) -> None:
+        import secrets
+        self.id = f"sync-{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
+        self.label, self.reason, self.dry_run = label, reason, dry_run
+        self.mirror = mirror                 # 采集后推送：日志同时写进那次采集的日志
+        self.entries: list[dict] = []
+        self.status = "queued"
+        self.error = ""
+        self.result: dict | None = None
+        self.created_at = datetime.now()
+        self.started_at: datetime | None = None
+        self.finished_at: datetime | None = None
+        _sync_jobs[self.id] = self
+        for k in list(_sync_jobs)[:-50]:     # 内存里留最近 50 次
+            if _sync_jobs[k].status not in ("queued", "running"):
+                _sync_jobs.pop(k, None)
+
+    def emit(self, level: str, message: str) -> None:
+        level = {"warning": "warn"}.get(level, level)
+        self.entries.append({"at": datetime.now().strftime("%H:%M:%S"),
+                             "level": level, "message": message})
+        _sync_log(level, message)
+        if self.mirror:
+            with contextlib.suppress(Exception):
+                self.mirror(level, message)
+
+    def run(self, job: str = "all", sc=None, **kwargs) -> dict | None:
+        """同步执行（调用方自己决定要不要放线程里）。失败返回 None，原因在 self.error。"""
+        self.status, self.started_at = "running", datetime.now()
+        self.emit("info", f"开始：{self.label}")
+        try:
+            self.result = datasync.run_sync(_cfg, sc or _sync_cfg(), job, dry_run=self.dry_run,
+                                            on_log=self.emit, reason=self.reason, **kwargs)
+            self.result["job_id"] = self.id          # 推送记录里点一下能打开这份日志
+            self.status = "success" if self.result.get("ok") else "failed"
+            done = sum(1 for t in self.result.get("tables", {}).values() if t.get("ok"))
+            total = len(self.result.get("tables", {}))
+            self.emit("done" if self.status == "success" else "error",
+                      f"{'试运行' if self.dry_run else '推送'}结束：{done}/{total} 张表成功，"
+                      f"耗时 {self.result.get('elapsed')}s")
+        except Exception as exc:  # noqa: BLE001
+            self.status, self.error = "failed", str(exc)
+            self.emit("error", f"推送失败：{exc}")
+        finally:
+            self.finished_at = datetime.now()
+        return self.result
+
+    def start(self, **kwargs) -> None:
+        threading.Thread(target=self.run, kwargs=kwargs, name=self.id, daemon=True).start()
+
+    def summary(self) -> dict:
+        fmt = "%Y-%m-%d %H:%M:%S"
+        end = self.finished_at or datetime.now()
+        return {"id": self.id, "label": self.label, "reason": self.reason,
+                "dry_run": self.dry_run, "status": self.status, "error": self.error,
+                "created_at": self.created_at.strftime(fmt),
+                "started_at": self.started_at.strftime(fmt) if self.started_at else "",
+                "finished_at": self.finished_at.strftime(fmt) if self.finished_at else "",
+                "duration": round((end - self.started_at).total_seconds(), 1)
+                            if self.started_at else 0,
+                "lines": len(self.entries),
+                "tables": [{"table": t.get("remote_table") or t.get("table"), "rows": t.get("rows", 0),
+                            "ok": t.get("ok"), "error": t.get("error", "")}
+                           for t in ((self.result or {}).get("tables") or {}).values()]}
+
+
+def _scheduled_sync(job: str) -> None:
+    SyncJob(f"定时补推 · {'日表' if job == 'daily' else '月表'}", "schedule").run(job=job)
+
+
+@app.get("/api/sync/jobs/{job_id}/log")
+def api_sync_job_log(job_id: str, after: int = 0) -> JSONResponse:
+    sj = _sync_jobs.get(job_id)
+    if sj is None:
+        raise HTTPException(404, "推送日志不存在（只保留最近 50 次，控制台重启后清空）")
+    after = max(0, after)
+    lines = sj.entries[after:]
+    return JSONResponse({"job": sj.summary(), "lines": lines, "next": after + len(lines),
+                         "result": sj.result if sj.status not in ("queued", "running") else None})
+
+
 @app.post("/api/sync/run")
 async def api_sync_run(payload: dict | None = None) -> JSONResponse:
-    """立即跑一次。dry_run=true 只取数不推送，用来验证配置。"""
+    """立即跑一次。dry_run=true 只取数不推送，用来验证配置。
+
+    background=true 时立刻返回任务编号，页面据此轮询实时日志；
+    否则（兼容老调用）等跑完返回结果。
+    """
     payload = payload or {}
     job = payload.get("job") or "daily"
     dry = bool(payload.get("dry_run"))
+    tables = payload.get("tables") or None
+    if payload.get("background"):
+        names = "、".join(datasync.TABLES[t].name for t in tables if t in datasync.TABLES) \
+            if tables else {"daily": "日表", "monthly": "月表"}.get(job, "全部表")
+        sj = SyncJob(f"{'试运行' if dry else '立即推送'} · {names}", "manual", dry_run=dry)
+        sj.start(job=job, account_ids=payload.get("account_ids") or None, tables=tables)
+        return JSONResponse({"ok": True, "job_id": sj.id, "job": sj.summary()})
     try:
         result = await asyncio.to_thread(
             lambda: datasync.run_sync(_cfg, _sync_cfg(), job,
@@ -1277,6 +1382,7 @@ def api_sync_status() -> JSONResponse:
         "next_collect_monthly": _fmt_dt(_scheduler.next_of("collect", "monthly") if _scheduler else None),
         "scheduler_alive": bool(_scheduler and _scheduler.is_alive()),
         "collect_history": list_runs(20),
+        "sync_jobs": [j.summary() for j in reversed(list(_sync_jobs.values()))][:20],
     })
 
 
@@ -1799,11 +1905,9 @@ def _build_scheduler() -> datasync.Scheduler:
         datasync.JobSpec("daily", "catchup", lambda: _collect_sched().as_catchup_schedule(),
                          lambda: _run_scheduled_collect("catchup")),
         datasync.JobSpec("daily", "sync", lambda: _sync_cfg().schedule,
-                         lambda: datasync.run_sync(_cfg, _sync_cfg(), "daily",
-                                                   on_log=_sync_log, reason="schedule")),
+                         lambda: _scheduled_sync("daily")),
         datasync.JobSpec("monthly", "sync", lambda: _sync_cfg().schedule,
-                         lambda: datasync.run_sync(_cfg, _sync_cfg(), "monthly",
-                                                   on_log=_sync_log, reason="schedule")),
+                         lambda: _scheduled_sync("monthly")),
     ])
 
 
