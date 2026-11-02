@@ -6,402 +6,477 @@
 <title>携程采集控制台</title>
 <style>
   :root{
-    --base:#12181D;         /* 冷石墨，不是纯黑 */
+    --base:#12181D;
     --surface:#1A222A;
     --raise:#212B34;
     --edge:#26313A;
     --edge-hi:#35434F;
     --ink:#D9E2E8;
     --muted:#76889A;
-    --signal:#F0A93B;       /* 只在「需要你操作」时出现 */
+    --signal:#F0A93B;
     --ok:#46B39A;
     --stop:#E0655C;
+    --info:#5B9BD5;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
     --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    --r:4px;
+    --r:5px;
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
-  body{
-    background:var(--base);color:var(--ink);
-    font:14px/1.55 var(--sans);
-    display:grid;grid-template-rows:52px 1fr;overflow:hidden;
-  }
+  body{background:var(--base);color:var(--ink);font:14px/1.55 var(--sans);
+    display:grid;grid-template-rows:54px 1fr;overflow:hidden}
   button{font:inherit;color:inherit}
   ::-webkit-scrollbar{width:9px;height:9px}
   ::-webkit-scrollbar-thumb{background:var(--edge-hi);border-radius:5px}
   ::-webkit-scrollbar-track{background:transparent}
 
   /* ============ 顶栏 ============ */
-  header{
-    display:flex;align-items:center;gap:16px;padding:0 16px;
-    background:var(--surface);border-bottom:1px solid var(--edge);
-  }
-  .brand{font-weight:600;letter-spacing:.01em;white-space:nowrap}
-  .brand span{color:var(--muted);font-weight:400;margin-left:8px;font-size:12px}
+  .top{display:flex;align-items:center;gap:22px;padding:0 20px;
+    background:var(--surface);border-bottom:1px solid var(--edge)}
+  .brand{font-weight:600;white-space:nowrap}
+  .nav{display:flex;height:100%;gap:4px}
+  .nav button{background:none;border:0;border-bottom:2px solid transparent;
+    padding:0 16px;cursor:pointer;color:var(--muted);font-size:14px;height:100%}
+  .nav button:hover{color:var(--ink)}
+  .nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--signal);font-weight:600}
+  .nav .badge{display:inline-block;min-width:16px;padding:0 5px;margin-left:6px;border-radius:8px;
+    font-size:11px;line-height:16px;background:var(--signal);color:#1A1206;font-weight:700}
+  .nav .badge:empty{display:none}
+  .top-meta{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--muted);
+    font-size:12px}
+  .top-meta b{color:var(--ink);font-weight:500}
+  .ghost{background:none;border:1px solid var(--edge-hi);border-radius:var(--r);
+    padding:5px 11px;cursor:pointer;color:var(--muted);font-size:12.5px}
+  .ghost:hover{color:var(--ink);border-color:var(--muted)}
 
-  .acct-pick{position:relative}
-  .acct-btn{
-    display:flex;align-items:center;gap:9px;background:var(--raise);
-    border:1px solid var(--edge-hi);border-radius:var(--r);
-    padding:6px 11px;cursor:pointer;min-width:190px;
-  }
-  .acct-btn:hover{border-color:var(--muted)}
-  .acct-btn b{font-weight:600;font-family:var(--mono);font-size:13px}
-  .acct-btn small{color:var(--muted);margin-left:auto;font-size:11.5px}
-  .acct-menu{
-    position:absolute;top:calc(100% + 5px);left:0;min-width:280px;z-index:40;
-    background:var(--raise);border:1px solid var(--edge-hi);border-radius:var(--r);
-    box-shadow:0 14px 40px rgba(0,0,0,.5);padding:5px;display:none;
-  }
-  .acct-menu.on{display:block}
-  .acct-menu button{
-    display:flex;align-items:center;gap:9px;width:100%;text-align:left;
-    background:none;border:0;border-radius:3px;padding:8px 10px;cursor:pointer;
-  }
-  .acct-menu button:hover{background:var(--surface)}
-  .acct-menu b{font-family:var(--mono);font-size:13px;font-weight:600}
-  .acct-menu small{color:var(--muted);margin-left:auto;font-size:11.5px}
-
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--edge-hi);flex:none}
-  .dot.ok{background:var(--ok)}
-  .dot.signal{background:var(--signal)}
-  .dot.stop{background:var(--stop)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--edge-hi);flex:none}
+  .dot.ok{background:var(--ok)} .dot.signal{background:var(--signal)} .dot.stop{background:var(--stop)}
+  .dot.info{background:var(--info)}
   .dot.beat{animation:beat 1.8s ease-in-out infinite}
   @keyframes beat{0%,100%{opacity:1}50%{opacity:.3}}
   @media (prefers-reduced-motion:reduce){.dot.beat{animation:none}}
 
-  .meta{margin-left:auto;display:flex;align-items:center;gap:14px;
-    color:var(--muted);font-family:var(--mono);font-size:11.5px;
-    font-variant-numeric:tabular-nums}
-  .meta b{color:var(--ink);font-weight:500}
+  /* ============ 页面 ============ */
+  main{min-height:0;overflow:hidden}
+  .page{display:none;height:100%;overflow-y:auto;padding:20px 24px 40px}
+  .page.on{display:block}
+  .page-hd{display:flex;align-items:flex-end;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+  .page-hd h1{margin:0;font-size:18px;font-weight:600}
+  .page-hd p{margin:3px 0 0;color:var(--muted);font-size:12.5px}
+  .page-hd .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 
-  /* ============ 主体 ============ */
-  main{display:grid;grid-template-columns:340px 1fr;min-height:0}
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+  .stat{background:var(--surface);border:1px solid var(--edge);border-radius:var(--r);padding:12px 14px}
+  .stat span{color:var(--muted);font-size:12px}
+  .stat b{display:block;font:600 22px var(--mono);margin-top:2px}
 
-  /* ---- 左侧控制台 ---- */
-  .panel{
-    background:var(--surface);border-right:1px solid var(--edge);
-    display:flex;flex-direction:column;min-height:0;
-  }
-  .tabs{display:flex;border-bottom:1px solid var(--edge);flex:none}
-  .tabs button{
-    flex:1;background:none;border:0;border-bottom:2px solid transparent;
-    padding:11px 0 9px;cursor:pointer;color:var(--muted);font-size:13px;
-  }
-  .tabs button:hover{color:var(--ink)}
-  .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--signal)}
-  .tabs .badge{
-    display:inline-block;width:6px;height:6px;border-radius:50%;
-    background:var(--signal);margin-left:5px;vertical-align:middle;opacity:0;
-  }
-  .tabs .badge.on{opacity:1}
+  .card{background:var(--surface);border:1px solid var(--edge);border-radius:var(--r);
+    margin-bottom:16px}
+  .card-hd{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--edge)}
+  .card-hd h2{margin:0;font-size:14px;font-weight:600}
+  .card-hd small{color:var(--muted);font-size:12px}
+  .card-hd .acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .card-bd{padding:14px 16px}
+  .grid2{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;align-items:start}
+  .grid-sync{display:grid;grid-template-columns:380px minmax(0,1fr);gap:16px;align-items:start}
+  @media (max-width:1100px){.grid2,.grid-sync{grid-template-columns:1fr}
+    .stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-  .pane{display:none;padding:16px;overflow-y:auto;flex:1;min-height:0}
-  .pane.on{display:block}
-  .grp{border:1px solid var(--edge);border-radius:var(--r);margin-bottom:10px;
-    background:var(--surface)}
-  .grp[open]{background:var(--base)}
-  .grp > summary{
-    list-style:none;cursor:pointer;padding:10px 12px;display:flex;align-items:center;
-    gap:8px;font-size:13px;font-weight:600;user-select:none;
-  }
-  .grp > summary::-webkit-details-marker{display:none}
-  .grp > summary::before{content:"▸";color:var(--muted);font-size:11px;
-    transition:transform .12s}
-  .grp[open] > summary::before{transform:rotate(90deg)}
-  .grp > summary:hover{color:var(--signal)}
-  .grp > summary span{margin-left:auto;color:var(--muted);font-size:11.5px;
-    font-weight:400}
-  .grp-body{padding:2px 12px 12px}
-  /* 折叠时必须显式隐藏内容：.btn 等作者样式写了 display:block，
-     会盖掉浏览器隐藏 details 内容的默认行为，导致「收起了却还看得见」 */
-  .grp:not([open]) > *:not(summary),
-  .sub-grp:not([open]) > *:not(summary){display:none !important}
-  .sub-grp{margin-top:8px;border-top:1px solid var(--edge);padding-top:8px}
-  .sub-grp > summary{cursor:pointer;color:var(--muted);font-size:12px;
-    list-style:none;user-select:none}
-  .sub-grp > summary::-webkit-details-marker{display:none}
-  .sub-grp > summary::before{content:"▸ ";font-size:10px}
-  .sub-grp[open] > summary::before{content:"▾ "}
-  .sub-grp > summary:hover{color:var(--signal)}
-  .sub{color:var(--muted);font-size:12px;margin:16px 0 8px;
-    padding-top:10px;border-top:1px solid var(--edge)}
-
-  .pane h3{
-    margin:0 0 10px;font-size:12.5px;font-weight:600;color:var(--muted);
-  }
-  .pane h3:not(:first-child){margin-top:22px}
-  .note{color:var(--muted);font-size:12px;margin:8px 0 0}
-  button.link{float:right;background:none;border:0;color:var(--muted);cursor:pointer;
-    font-size:12px;padding:0;text-decoration:underline;text-underline-offset:3px}
-  button.link:hover{color:var(--signal)}
-
-  .btn{
-    display:block;width:100%;margin-bottom:7px;padding:9px 12px;
-    background:var(--raise);border:1px solid var(--edge-hi);border-radius:var(--r);
-    cursor:pointer;text-align:center;transition:border-color .12s,background .12s;
-    font-size:13px;
-  }
+  /* ============ 按钮 / 表单 ============ */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:7px 14px;background:var(--raise);border:1px solid var(--edge-hi);
+    border-radius:var(--r);cursor:pointer;font-size:13px;white-space:nowrap;
+    transition:border-color .12s,background .12s}
   .btn:hover:not(:disabled){border-color:var(--muted);background:#26313B}
   .btn:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
-  .btn:disabled{opacity:.3;cursor:not-allowed}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
   .btn--go{background:var(--signal);border-color:var(--signal);color:#1A1206;font-weight:600}
   .btn--go:hover:not(:disabled){background:#FFBB55;border-color:#FFBB55}
   .btn--stop{color:var(--stop);border-color:#4A3230}
   .btn--stop:hover:not(:disabled){border-color:var(--stop);background:#2A1C1B}
-  .btn-row{display:flex;gap:7px}
-  .btn-row .btn{margin-bottom:7px}
+  .btn--sm{padding:3px 9px;font-size:12px}
+  .btn--block{display:flex;width:100%;margin-bottom:8px}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap}
 
-  .field{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-  .field label{color:var(--muted);font-size:12.5px;width:66px;flex:none}
-  .field input,.field select{
+  .field{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .field > label{color:var(--muted);font-size:12.5px;width:82px;flex:none}
+  .field input,.field select,.inp{
     flex:1;min-width:0;background:var(--base);color:var(--ink);
-    border:1px solid var(--edge);border-radius:var(--r);padding:7px 9px;
-    font:13px var(--mono);
-  }
-  .field input:focus,.field select:focus{outline:none;border-color:var(--signal)}
-  /* 数字框：type=number 的上下箭头约占 17px，再算上内边距，
-     被 flex 压到 40px 以下时数字就完全看不见了。所以固定宽度、禁止收缩。 */
-  .field input.num{flex:0 0 78px;width:78px;text-align:center}
-  /* 时间框同理：hh:mm 加上右侧取景器图标至少要 96px，
-     被 flex 压到 74px 时分钟就看不见了（只剩 "04:"）。 */
-  .field input[type=time]{flex:0 0 96px;width:96px;text-align:center}
-  .unit{color:var(--muted);font-size:11.5px;min-width:0;overflow:hidden;
-    text-overflow:ellipsis;white-space:nowrap}
-  .field input::placeholder{color:#54646F}
+    border:1px solid var(--edge);border-radius:var(--r);padding:7px 9px;font:13px var(--mono)}
+  .field input:focus,.field select:focus,.inp:focus{outline:none;border-color:var(--signal)}
+  .field input.num{flex:0 0 80px;width:80px;text-align:center}
+  .field input[type=time]{flex:0 0 118px;width:118px;text-align:center}
+  .field input::placeholder,.inp::placeholder{color:#54646F}
+  .unit{color:var(--muted);font-size:12px;white-space:nowrap}
+  .check{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-size:13px;
+    margin:2px 16px 10px 0;cursor:pointer}
+  .check input{accent-color:var(--signal);width:14px;height:14px;cursor:pointer}
+  .note{color:var(--muted);font-size:12px;margin:6px 0 0}
+  .sub{color:var(--muted);font-size:12px;margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--edge)}
+  .seg{display:inline-flex;border:1px solid var(--edge-hi);border-radius:var(--r);overflow:hidden}
+  .seg button{background:none;border:0;padding:6px 14px;cursor:pointer;color:var(--muted);font-size:13px}
+  .seg button + button{border-left:1px solid var(--edge-hi)}
+  .seg button[aria-pressed="true"]{background:var(--raise);color:var(--ink);font-weight:600}
 
-  /* 登录步骤：这是真的顺序流程，不是装饰 */
-  .card{
-    border:1px solid var(--edge);border-radius:var(--r);padding:11px 12px;
-    margin-bottom:12px;background:var(--base);
-  }
-  .card-hd{display:flex;align-items:center;gap:9px;margin-bottom:8px}
-  .card-hd b{font:13px var(--mono);font-weight:600}
-  .tag{margin-left:auto;font-size:11px;padding:2px 8px;border-radius:10px;
-    border:1px solid var(--edge-hi);color:var(--muted)}
+  /* ============ 表格 ============ */
+  .tbl-wrap{overflow-x:auto}
+  table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:9px 12px;
+    border-bottom:1px solid var(--edge);white-space:nowrap;background:var(--surface)}
+  .tbl td{padding:10px 12px;border-bottom:1px solid var(--edge);vertical-align:middle}
+  .tbl tr:last-child td{border-bottom:0}
+  .tbl tbody tr:hover td{background:#1E2730}
+  .tbl tr.click{cursor:pointer}
+  .tbl .mono{font-family:var(--mono);font-size:12.5px}
+  .tbl .muted{color:var(--muted)}
+  .tbl .acts{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap}
+  .tbl td.right,.tbl th.right{text-align:right}
+  .cell-main{font-weight:600}
+  .cell-sub{color:var(--muted);font-size:12px;margin-top:1px}
+  .empty-row{text-align:center;color:var(--muted);padding:28px 0 !important}
+
+  .tag{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:10px;
+    border:1px solid var(--edge-hi);color:var(--muted);white-space:nowrap}
   .tag.ok{color:var(--ok);border-color:var(--ok)}
   .tag.warn{color:var(--signal);border-color:var(--signal)}
   .tag.bad{color:var(--stop);border-color:var(--stop)}
-  .kv{display:flex;gap:10px;font-size:12.5px;padding:2px 0}
-  .kv span{color:var(--muted);width:74px;flex:none}
+  .tag.info{color:var(--info);border-color:var(--info)}
+
+  .kv{display:flex;gap:10px;font-size:12.5px;padding:3px 0}
+  .kv span{color:var(--muted);width:76px;flex:none}
   .kv b{font:12.5px var(--mono);font-weight:500;word-break:break-all}
-  .menu-group{color:var(--muted);font-size:11px;padding:7px 10px 3px;
-    border-top:1px solid var(--edge);margin-top:3px}
-  .menu-group:first-child{border-top:0;margin-top:0}
 
-  .using{
-    border:1px solid var(--edge);border-radius:var(--r);padding:9px 11px;
-    margin-bottom:12px;background:var(--base);
-  }
-  .using .row{display:flex;align-items:baseline;gap:10px;font-size:12.5px;
-    padding:2px 0}
-  .using .row span{color:var(--muted);width:62px;flex:none}
-  .using .row b{font:12.5px var(--mono);font-weight:600;word-break:break-all}
-  .check{display:flex;align-items:center;gap:8px;color:var(--muted);
-    font-size:12.5px;margin:2px 0 10px;cursor:pointer}
-  .check input{accent-color:var(--signal);width:14px;height:14px;cursor:pointer}
+  /* ============ 弹窗 ============ */
+  .modal{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+    background:rgba(5,8,10,.62);padding:24px}
+  .modal.on{display:flex}
+  .dlg{background:var(--surface);border:1px solid var(--edge-hi);border-radius:8px;
+    box-shadow:0 30px 80px rgba(0,0,0,.6);display:flex;flex-direction:column;
+    max-height:100%;width:560px;max-width:100%}
+  .dlg-hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--edge);flex:none}
+  .dlg-hd h3{margin:0;font-size:15px;font-weight:600}
+  .dlg-hd .x{margin-left:auto;background:none;border:0;color:var(--muted);font-size:20px;
+    cursor:pointer;line-height:1;padding:0 4px}
+  .dlg-hd .x:hover{color:var(--ink)}
+  .dlg-bd{padding:16px 18px;overflow-y:auto;min-height:0}
+  .dlg-ft{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 18px;
+    border-top:1px solid var(--edge);flex:none}
+  .dlg-ft .left{margin-right:auto;color:var(--muted);font-size:12px}
+  .dlg.wide{width:1000px}
+  .dlg.full{width:min(1680px,100%);height:100%}
 
-  .steps{margin:2px 0 14px;padding:0;list-style:none}
-  .steps li{
-    display:flex;align-items:flex-start;gap:10px;padding:5px 0;
-    color:var(--muted);font-size:12.5px;
-  }
-  .steps .pip{
-    width:9px;height:9px;border-radius:50%;border:1.5px solid var(--edge-hi);
-    margin-top:5px;flex:none;
-  }
-  .steps li.done{color:var(--ink)}
-  .steps li.done .pip{background:var(--ok);border-color:var(--ok)}
-  .steps li.now{color:var(--signal);font-weight:600}
-  .steps li.now .pip{background:var(--signal);border-color:var(--signal);
-    box-shadow:0 0 0 4px rgba(240,169,59,.15)}
-  .steps li.bad{color:var(--stop)}
-  .steps li.bad .pip{background:var(--stop);border-color:var(--stop)}
-  .steps small{display:block;color:var(--muted);font-weight:400;font-size:11.5px;
-    margin-top:1px}
-
-  .callout{
-    border:1px solid var(--signal);background:rgba(240,169,59,.08);
-    border-radius:var(--r);padding:11px 12px;margin-bottom:12px;font-size:12.5px;
-  }
-  .callout h4{margin:0 0 5px;font-size:13px;color:var(--signal)}
-  .callout p{margin:0;color:var(--ink)}
-
-  /* ---- 右侧画面 ---- */
-  .stage-wrap{display:grid;grid-template-rows:1fr auto;min-height:0}
-  .stage{
-    position:relative;display:flex;align-items:center;justify-content:center;
-    padding:16px;min-height:0;overflow:hidden;background:
-      radial-gradient(ellipse at 50% 40%, #18202700 0%, #0D1215 100%), var(--base);
-  }
-  #screen,#vncHost{
-    display:none;max-width:100%;max-height:100%;
-    border:1px solid var(--edge-hi);border-radius:2px;background:#fff;
-    box-shadow:0 20px 60px rgba(0,0,0,.55);
-  }
+  /* 浏览器弹窗 */
+  .bw{display:grid;grid-template-columns:300px minmax(0,1fr);flex:1;min-height:0}
+  .bw-side{border-right:1px solid var(--edge);overflow-y:auto;padding:14px 16px}
+  .bw-main{display:grid;grid-template-rows:minmax(0,1fr) 170px;min-height:0}
+  .stage{position:relative;display:flex;align-items:center;justify-content:center;padding:14px;
+    min-height:0;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#18202700 0%,#0D1215 100%),var(--base)}
+  #screen,#vncHost{display:none;max-width:100%;max-height:100%;border:1px solid var(--edge-hi);
+    border-radius:2px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.55)}
   #screen.on,#vncHost.on{display:block}
   #vncHost{line-height:0}
   #vncHost canvas{max-width:100%;max-height:100%;display:block}
-
-  .empty{max-width:400px;text-align:center;color:var(--muted);font-size:13px}
-  .empty h2{margin:0 0 10px;color:var(--ink);font-size:16px;font-weight:600}
-  .empty p{margin:0 0 16px}
-  .empty .btn{max-width:200px;margin:0 auto}
-
-  /* 需要你操作时，直接压在画面上 —— 这是唯一会盖住主角的东西 */
-  .live-hint{
-    position:absolute;left:50%;transform:translateX(-50%);top:18px;z-index:18;
-    display:none;align-items:center;gap:9px;
-    background:rgba(26,34,42,.94);border:1px solid var(--edge-hi);
-    color:var(--ink);padding:7px 14px;border-radius:var(--r);font-size:12.5px;
-    box-shadow:0 8px 24px rgba(0,0,0,.45);
-  }
+  .stage .empty{max-width:420px;text-align:center;color:var(--muted);font-size:13px}
+  .stage .empty h2{margin:0 0 10px;color:var(--ink);font-size:16px}
+  .live-hint{position:absolute;left:50%;transform:translateX(-50%);top:16px;z-index:18;display:none;
+    align-items:center;gap:9px;background:rgba(26,34,42,.94);border:1px solid var(--edge-hi);
+    padding:6px 14px;border-radius:var(--r);font-size:12.5px}
   .live-hint.on{display:flex}
-
-  .attention{
-    position:absolute;left:50%;transform:translateX(-50%);bottom:22px;z-index:20;
-    display:none;align-items:center;gap:11px;
-    background:var(--signal);color:#1A1206;padding:10px 16px;border-radius:var(--r);
-    box-shadow:0 10px 30px rgba(0,0,0,.5);font-weight:600;font-size:13.5px;
-  }
+  .attention{position:absolute;left:50%;transform:translateX(-50%);bottom:20px;z-index:20;display:none;
+    align-items:center;gap:11px;background:var(--signal);color:#1A1206;padding:10px 16px;
+    border-radius:var(--r);font-weight:600;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .attention.on{display:flex}
-  .attention .x{
-    background:rgba(0,0,0,.16);border:0;border-radius:3px;padding:3px 8px;
-    cursor:pointer;font-size:12px;font-weight:600;
-  }
+  .attention .x{background:rgba(0,0,0,.16);border:0;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:12px}
 
-  /* ---- 日志 ---- */
-  .logs{border-top:1px solid var(--edge);background:var(--surface);
-    display:flex;flex-direction:column;height:190px;transition:height .16s}
-  .logs.min{height:37px}
-  .logs > header{
-    display:flex;align-items:center;gap:10px;padding:0 16px;height:36px;flex:none;
-    border-bottom:1px solid var(--edge);color:var(--muted);font-size:12.5px;
-    background:none;
-  }
-  .logs > header button{
-    background:none;border:1px solid var(--edge);border-radius:3px;color:var(--muted);
-    padding:2px 9px;cursor:pointer;font-size:11.5px;
-  }
-  .logs > header button:hover{border-color:var(--muted);color:var(--ink)}
-  .logs .push{margin-left:auto}
-  .logs .body{flex:1;overflow-y:auto;padding:7px 16px 11px;
-    font:12px/1.7 var(--mono)}
-  .logs.min .body{display:none}
-  .logs .body div{display:flex;gap:11px;white-space:pre-wrap;word-break:break-word}
-  .logs .t{color:#4C5B66;flex:none}
-  .logs .warn{color:var(--signal)}
-  .logs .error{color:var(--stop)}
-  .logs .done{color:var(--ok)}
+  .acct-card{border:1px solid var(--edge);border-radius:var(--r);padding:10px 12px;margin-bottom:12px;background:var(--base)}
+  .steps{margin:4px 0 12px;padding:0;list-style:none}
+  .steps li{display:flex;align-items:flex-start;gap:10px;padding:4px 0;color:var(--muted);font-size:12.5px}
+  .steps .pip{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--edge-hi);margin-top:5px;flex:none}
+  .steps li.done{color:var(--ink)}
+  .steps li.done .pip{background:var(--ok);border-color:var(--ok)}
+  .steps li.now{color:var(--signal);font-weight:600}
+  .steps li.now .pip{background:var(--signal);border-color:var(--signal);box-shadow:0 0 0 4px rgba(240,169,59,.15)}
+  .steps li.bad{color:var(--stop)}
+  .steps li.bad .pip{background:var(--stop);border-color:var(--stop)}
+  .steps small{display:block;color:var(--muted);font-weight:400;font-size:11.5px}
+  .callout{border:1px solid var(--signal);background:rgba(240,169,59,.08);border-radius:var(--r);
+    padding:10px 12px;margin-bottom:12px;font-size:12.5px}
+  .callout h4{margin:0 0 4px;font-size:13px;color:var(--signal)}
+  .callout p{margin:0}
+  .side-h{color:var(--muted);font-size:12px;font-weight:600;margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--edge)}
+  details.more > summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none;margin:12px 0 8px;user-select:none}
+  details.more > summary::-webkit-details-marker{display:none}
+  details.more > summary::before{content:"▸ ";font-size:10px}
+  details.more[open] > summary::before{content:"▾ "}
+  details.more > summary:hover{color:var(--signal)}
 
-  .toast{
-    position:fixed;right:18px;bottom:18px;z-index:60;max-width:340px;
-    background:var(--raise);border:1px solid var(--edge-hi);border-left:3px solid var(--signal);
-    border-radius:var(--r);padding:11px 14px;font-size:13px;
-    box-shadow:0 12px 34px rgba(0,0,0,.55);
-  }
+  /* 日志 */
+  .logbox{background:var(--base);font:12px/1.7 var(--mono);overflow-y:auto;padding:8px 14px}
+  .logbox div{display:flex;gap:11px;white-space:pre-wrap;word-break:break-word}
+  .logbox .t{color:#4C5B66;flex:none}
+  .logbox .warn{color:var(--signal)} .logbox .error{color:var(--stop)} .logbox .done{color:var(--ok)}
+  .bw-log{border-top:1px solid var(--edge);display:flex;flex-direction:column;min-height:0}
+  .bw-log header{display:flex;align-items:center;gap:8px;padding:0 14px;height:32px;flex:none;
+    color:var(--muted);font-size:12px;border-bottom:1px solid var(--edge)}
+  .bw-log .logbox{flex:1}
+  #runLog{height:min(62vh,640px);border:1px solid var(--edge);border-radius:var(--r)}
+
+  /* 同步字段 */
+  .tcard .card-hd{flex-wrap:wrap}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:1px solid var(--edge-hi);border-radius:12px;padding:2px 10px;font:12px var(--mono);
+    cursor:pointer;color:var(--muted);background:none}
+  .chip[aria-pressed="true"]{border-color:var(--signal);color:var(--signal);background:rgba(240,169,59,.08)}
+  .ftbl td,.ftbl th{padding:6px 10px}
+  .ftbl input.inp{padding:4px 8px;font-size:12px;width:100%}
+  .ftbl tr.off td{opacity:.45}
+  .ftbl tr.off td:first-child{opacity:1}
+  .sticky-acts{position:sticky;bottom:-40px;background:var(--base);padding:12px 0;border-top:1px solid var(--edge);
+    display:flex;gap:8px;flex-wrap:wrap;z-index:5}
+  pre.json{background:var(--base);border:1px solid var(--edge);border-radius:var(--r);padding:10px 12px;
+    font:12px/1.55 var(--mono);overflow:auto;max-height:320px;margin:8px 0 0}
+
+  .toast{position:fixed;right:18px;bottom:18px;z-index:90;max-width:380px;background:var(--raise);
+    border:1px solid var(--edge-hi);border-left:3px solid var(--signal);border-radius:var(--r);
+    padding:11px 14px;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.55)}
   #ime{position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0}
 
-  @media (max-width:920px){
-    main{grid-template-columns:1fr;grid-template-rows:auto 1fr}
-    .panel{max-height:46vh}
+  @media (max-width:900px){
+    .top{gap:10px;padding:0 10px;overflow-x:auto}
+    .top-meta{display:none}
+    .page{padding:14px 16px 40px}
+    .bw{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+    .bw-side{max-height:40vh;border-right:0;border-bottom:1px solid var(--edge)}
+    .modal{padding:8px}
   }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="brand">携程采集控制台<span id="ttl"></span></div>
-
-  <div class="acct-pick">
-    <button class="acct-btn" id="acctBtn" aria-haspopup="true" aria-expanded="false">
-      <span class="dot" id="acctDot"></span>
-      <b id="acctName">加载中</b>
-      <small id="acctState"></small>
-    </button>
-    <div class="acct-menu" id="acctMenu"></div>
-  </div>
-
-  <div class="meta">
-    <span><span class="dot" id="liveDot"></span> <b id="liveText">浏览器未启动</b></span>
-    <span id="resBar">—</span>
-    <span id="fpsBar">—</span>
+<header class="top">
+  <div class="brand">携程采集控制台</div>
+  <nav class="nav" role="tablist">
+    <button role="tab" aria-selected="true" data-page="accounts">账户管理<span class="badge" id="badgeAcct"></span></button>
+    <button role="tab" aria-selected="false" data-page="tasks">任务管理<span class="badge" id="badgeTasks"></span></button>
+    <button role="tab" aria-selected="false" data-page="sync">远程同步</button>
+  </nav>
+  <div class="top-meta">
+    <span><span class="dot" id="schedDot"></span> <b id="schedText">调度 —</b></span>
     <span id="modeBar">—</span>
+    <button class="ghost" id="btnNotify">通知设置</button>
   </div>
 </header>
 
 <main>
-  <section class="panel">
-    <div class="tabs" role="tablist">
-      <button role="tab" aria-selected="true" data-pane="run">运行<span class="badge" id="badgeLogin"></span></button>
-      <button role="tab" aria-selected="false" data-pane="accounts">账号</button>
-      <button role="tab" aria-selected="false" data-pane="cron">定时</button>
-      <button role="tab" aria-selected="false" data-pane="settings">设置</button>
+  <!-- ================================================================ 账户管理 -->
+  <section class="page on" id="page-accounts">
+    <div class="page-hd">
+      <div>
+        <h1>账户管理</h1>
+        <p>新增与维护采集账号；点「浏览器」打开该账号的远程浏览器，登录、过验证都在弹窗里完成。
+          登录态有效期 <span id="ttl">—</span> 小时。</p>
+      </div>
+      <div class="acts">
+        <button class="btn" id="btnAcctRefresh">刷新</button>
+        <button class="btn btn--go" id="btnAcctNew">＋ 新增账号</button>
+      </div>
     </div>
 
-    <!-- ---------- 登录 ---------- -->
-    <div class="pane on" id="pane-run">
-      <div class="callout" id="captchaTip" style="display:none">
-        <h4>需要你完成验证</h4>
-        <p id="captchaTipText">在右侧画面里按住滑块拖到底。完成后流程会自己继续。</p>
-      </div>
+    <div class="stats">
+      <div class="stat"><span>账号总数</span><b id="stTotal">—</b></div>
+      <div class="stat"><span>登录态有效</span><b id="stFresh" style="color:var(--ok)">—</b></div>
+      <div class="stat"><span>需要登录</span><b id="stStale" style="color:var(--signal)">—</b></div>
+      <div class="stat"><span>浏览器在线 / 采集中</span><b id="stLive">—</b></div>
+    </div>
 
-<div class="card" id="acctCard">
+    <div class="card">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>账号</th><th>标识 / 景区</th><th>状态</th><th>登录态</th>
+            <th>上次登录</th><th>浏览器</th><th>当前任务</th><th class="right">操作</th>
+          </tr></thead>
+          <tbody id="acctRows"><tr><td colspan="8" class="empty-row">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 任务管理 -->
+  <section class="page" id="page-tasks">
+    <div class="page-hd">
+      <div>
+        <h1>任务管理</h1>
+        <p>新建采集任务立即运行；多个账号按顺序串行执行。点击任意一行查看完整运行日志。
+          采集结果直写本地 MySQL，完成后按「远程同步」的配置推送下游。</p>
+      </div>
+      <div class="acts">
+        <button class="btn" id="btnCatchup">补采上月缺失评级</button>
+        <button class="btn btn--go" id="btnTaskNew">＋ 新建采集任务</button>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
         <div class="card-hd">
-          <span class="dot" id="cardDot"></span>
-          <b id="cardName">—</b>
-          <span class="tag" id="cardTag">—</span>
+          <h2>运行记录</h2><small id="runCount"></small>
+          <div class="acts">
+            <select class="inp" id="runFilterAcct" style="width:auto"><option value="">全部账号</option></select>
+            <select class="inp" id="runFilterStatus" style="width:auto">
+              <option value="">全部状态</option>
+              <option value="active">排队 / 运行中</option>
+              <option value="success">完成</option>
+              <option value="partial">部分完成</option>
+              <option value="failed">失败 / 停止</option>
+              <option value="skipped">跳过</option>
+            </select>
+            <button class="btn btn--sm" id="btnRunsRefresh">刷新</button>
+          </div>
         </div>
-        <div class="kv"><span>标识</span><b id="cardId">—</b></div>
-        <div class="kv"><span>景区</span><b id="cardScenic">—</b></div>
-        <div class="kv"><span>上次登录</span><b id="cardLogin">—</b></div>
-        <div class="kv"><span>目的地指纹</span><b id="cardFp">—</b></div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th>创建时间</th><th>账号</th><th>任务</th><th>来源</th><th>状态</th>
+              <th class="right">耗时</th><th class="right">操作</th>
+            </tr></thead>
+            <tbody id="runRows"><tr><td colspan="7" class="empty-row">加载中…</td></tr></tbody>
+          </table>
+        </div>
       </div>
 
-      
-      <details class="grp" open>
-        <summary>浏览器<span>已开着就直接用</span></summary>
-        <div class="grp-body">
-          <button class="btn btn--go" id="btnStart">打开浏览器</button>
-          <button class="btn btn--stop" id="btnStop" disabled>关闭浏览器</button>
-          <details class="sub-grp">
-            <summary>手动分步</summary>
-            <p class="note" style="margin:0 0 8px">自动登录走不通时，一步步来。</p>
-            <div class="btn-row">
-              <button class="btn" id="btnLoginPage" disabled>打开登录页</button>
-              <button class="btn" id="btnFill" disabled>填账号密码</button>
+      <div>
+        <div class="card">
+          <div class="card-hd"><h2>定时采集</h2><span class="tag" id="csTag">—</span></div>
+          <div class="card-bd">
+            <label class="check"><input type="checkbox" id="csEnabled"> 启用定时采集</label>
+            <div class="sub" style="margin-top:4px">日数据</div>
+            <label class="check"><input type="checkbox" id="csDaily"> 每天采日数据</label>
+            <div class="field"><label>每天</label><input id="csDailyAt" type="time" value="02:30"></div>
+            <div class="field"><label>回补</label>
+              <input class="num" id="csDailyDays" type="number" min="1" max="365" value="3">
+              <span class="unit">天（覆盖延迟产出的数据）</span></div>
+
+            <div class="sub">月数据（评级，采上个月）</div>
+            <label class="check"><input type="checkbox" id="csMonthly"> 每月采月数据</label>
+            <div class="field"><label>每月</label>
+              <input class="num" id="csMonthDay" type="number" min="1" max="28" value="6">
+              <span class="unit">号</span>
+              <input id="csMonthAt" type="time" value="03:00"></div>
+            <div class="field"><label>缺数补采</label>
+              <input class="num" id="csMonthRetry" type="number" min="0" max="27" value="7">
+              <span class="unit">天，0 = 不补</span></div>
+            <p class="note" id="csCatchup" style="margin:-4px 0 8px"></p>
+
+            <div class="sub">其他</div>
+            <label class="check"><input type="checkbox" id="csSkipStale" checked> 登录态失效时跳过并发飞书通知</label>
+            <p class="note" id="csNext">下次运行：—</p>
+            <div class="btn-row" style="margin-top:12px">
+              <button class="btn btn--go" id="btnCsSave">保存</button>
+              <button class="btn" id="btnCsPreview">预览会跑哪些账号</button>
             </div>
-            <button class="btn" id="btnSave" disabled>保存登录态</button>
-          </details>
+            <div id="csPreview"></div>
+          </div>
         </div>
-      </details>
 
-      <details class="grp" id="grpLogin" open>
-        <summary>登录</summary>
-        <div class="grp-body">
-<div id="zoneLogged" style="display:none">
-        <p class="note" style="margin:0 0 10px">
-          登录态有效，不需要再登一次。要采数据用下面的「手动采集」。</p>
-        <div id="pwdBox" style="margin-top:2px">
-          <div class="field"><label>新密码</label>
-            <input id="newPwd" type="password" placeholder="写入 config.yaml"></div>
-          <p class="note" style="margin:0 0 8px">
-            改密码不影响当前登录态（登录态是 Cookie，与密码无关），
-            下次需要重新登录时才会用到。</p>
-          <button class="btn btn--go" id="btnPwdSave">保存密码</button>
+        <div class="card">
+          <div class="card-hd"><h2>调度日志</h2><small>定时跳过了谁、为什么</small></div>
+          <div class="logbox" id="schedLogs" style="max-height:260px">暂无</div>
         </div>
-        <button class="btn" id="btnRelogin">重新登录（登录态失效时用）</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 远程同步 -->
+  <section class="page" id="page-sync">
+    <div class="page-hd">
+      <div>
+        <h1>远程同步</h1>
+        <p>把本地 MySQL 里的采集数据推给下游接口。在这里决定推哪些表、哪些字段、下游叫什么名字。</p>
+      </div>
+      <div class="acts"><span class="tag" id="syncTag">—</span></div>
+    </div>
+
+    <div class="grid-sync">
+      <div>
+        <div class="card">
+          <div class="card-hd"><h2>下游接口</h2></div>
+          <div class="card-bd">
+            <div class="field"><label>状态</label>
+              <select id="syEnabled"><option value="0">关闭</option><option value="1">开启</option></select></div>
+            <div class="field"><label>地址</label>
+              <input id="syUrl" placeholder="http://host/v1/data/…/dataSync/crossDomainSync"></div>
+            <div class="field"><label>Key 头名</label><input id="syHeader" placeholder="xpftkey"></div>
+            <div class="field"><label>Key</label><input id="syKey" type="password" placeholder="pfk_…"></div>
+            <div class="field"><label>每批行数</label><input class="num" id="syBatch" type="number" min="1" max="2000" value="200"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><h2>推送策略</h2></div>
+          <div class="card-bd">
+            <label class="check"><input type="checkbox" id="syAfter" checked> 采集完成后立刻推送本次数据</label>
+            <p class="note" style="margin:-4px 0 10px">只推那一次采集的账号和时间窗口。部分完成也会推已入库的部分。</p>
+            <div class="sub">定时补推（兜底，补推之前没推成功的）</div>
+            <label class="check"><input type="checkbox" id="syDaily"> 每天补推日表</label>
+            <div class="field"><label>每天</label><input id="syDailyAt" type="time" value="03:30"></div>
+            <label class="check"><input type="checkbox" id="syMonthly"> 每月补推月表</label>
+            <div class="field"><label>每月</label>
+              <input class="num" id="syMonthDay" type="number" min="1" max="28" value="5">
+              <span class="unit">号</span>
+              <input id="syMonthAt" type="time" value="04:00"></div>
+            <p class="note" id="syNext">下次运行：—</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><h2>推送记录</h2><small>最近 10 次</small></div>
+          <div class="card-bd" id="syHistory" style="font-size:12.5px">暂无记录</div>
+        </div>
       </div>
 
-      <div id="zoneLogin" style="display:none">
-        <div class="using" id="usingBox" style="display:none">
-          <div class="row"><span>登录账号</span><b id="usingAccount">—</b></div>
-          <div class="row"><span>密码</span><b id="usingPwd">—</b></div>
-          <div class="row"><span>凭据来源</span><b id="usingSrc">—</b></div>
-          <div class="row"><span>保存</span><b id="usingSave">登录成功后写回配置</b></div>
+      <div>
+        <div id="syTables"></div>
+        <div class="sticky-acts">
+          <button class="btn btn--go" id="btnSyncSave">保存配置</button>
+          <button class="btn" id="btnSyncDry">试运行（预览报文，不推送）</button>
+          <span style="flex:1"></span>
+          <button class="btn" id="btnSyncDay">立即推送日表</button>
+          <button class="btn" id="btnSyncMonth">立即推送月表</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================================================================ 浏览器弹窗 -->
+<div class="modal" id="mBrowser">
+  <div class="dlg full">
+    <div class="dlg-hd">
+      <span class="dot" id="bDot"></span>
+      <h3 id="bTitle">—</h3>
+      <span class="tag" id="bTag">—</span>
+      <span class="unit" id="bMeta" style="margin-left:12px"></span>
+      <button class="x" data-close="mBrowser" title="关闭（浏览器保持运行）">×</button>
+    </div>
+    <div class="bw">
+      <aside class="bw-side">
+        <div class="callout" id="captchaTip" style="display:none">
+          <h4>需要你完成验证</h4>
+          <p id="captchaTipText">在右侧画面里按住滑块拖到底，完成后流程会自己继续。</p>
         </div>
 
+        <div class="acct-card">
+          <div class="kv"><span>标识</span><b id="bId">—</b></div>
+          <div class="kv"><span>景区</span><b id="bScenic">—</b></div>
+          <div class="kv"><span>上次登录</span><b id="bLogin">—</b></div>
+          <div class="kv"><span>目的地指纹</span><b id="bFp">—</b></div>
+        </div>
+
+        <button class="btn btn--go btn--block" id="btnStart">打开浏览器</button>
+
+        <div class="side-h">登录</div>
+        <p class="note" id="bLoggedNote" style="margin:0 0 10px;display:none">
+          登录态有效，一般不需要再登。登录态失效或要换号时再用下面的登录。</p>
         <ol class="steps" id="steps">
           <li data-s="browser"><span class="pip"></span><span>启动浏览器</span></li>
           <li data-s="filling"><span class="pip"></span><span>填入账号密码</span></li>
@@ -409,280 +484,211 @@
           <li data-s="sms"><span class="pip"></span><span>手机短信验证<small>把收到的码填进来</small></span></li>
           <li data-s="done"><span class="pip"></span><span>保存登录态</span></li>
         </ol>
-
-        <div class="field"><label>账号</label><input id="loginAcct" placeholder="留空则用配置里的"></div>
-        <div class="field"><label>密码</label><input id="loginPwd" type="password" placeholder="留空则用配置里的"></div>
-        <label class="check">
-          <input type="checkbox" id="persistCreds" checked>
-          登录成功后把凭据写回 config.yaml
-        </label>
-        <button class="btn btn--go" id="btnAutoLogin">开始登录</button>
-        <button class="btn btn--stop" id="btnAbortLogin" disabled>停止登录</button>
+        <div class="field"><label>账号</label><input id="loginAcct" placeholder="留空用配置里的"></div>
+        <div class="field"><label>密码</label><input id="loginPwd" type="password" placeholder="留空用配置里的"></div>
+        <label class="check"><input type="checkbox" id="persistCreds" checked> 登录成功后写回 config.yaml</label>
+        <div class="btn-row">
+          <button class="btn btn--go" id="btnAutoLogin" style="flex:1">开始登录</button>
+          <button class="btn btn--stop" id="btnAbortLogin" disabled>停止</button>
+        </div>
 
         <div id="smsBox" style="display:none">
-          <h3>短信验证码</h3>
+          <div class="side-h">短信验证码</div>
           <div class="field"><label>验证码</label>
             <input id="smsCode" maxlength="8" inputmode="numeric" placeholder="6 位数字"></div>
-          <button class="btn btn--go" id="btnSms">提交验证码</button>
+          <button class="btn btn--go btn--block" id="btnSms">提交验证码</button>
+        </div>
+
+        <details class="more">
+          <summary>手动分步（自动登录走不通时）</summary>
+          <div class="btn-row">
+            <button class="btn" id="btnLoginPage" disabled>打开登录页</button>
+            <button class="btn" id="btnFill" disabled>填账号密码</button>
+            <button class="btn" id="btnSave" disabled>保存登录态</button>
+          </div>
+        </details>
+        <details class="more">
+          <summary>浏览器与排障</summary>
+          <button class="btn btn--stop btn--block" id="btnStop" disabled>关闭浏览器</button>
+          <button class="btn btn--block" id="btnRelease">释放 profile 占用</button>
+          <p class="note">提示「profile 正被占用」时用。已不存在的持有进程会被自动清掉；还活着的会告诉你 pid。</p>
+        </details>
+      </aside>
+
+      <div class="bw-main">
+        <div class="stage">
+          <canvas id="screen" width="1440" height="1080"></canvas>
+          <div id="vncHost"></div>
+          <div class="empty" id="empty">
+            <h2 id="emptyTitle">浏览器未打开</h2>
+            <p id="emptyText">浏览器在服务器上运行，画面实时推到这里，可以直接点击、拖动、输入和滚动。</p>
+            <button class="btn btn--go" id="btnStart2">打开浏览器</button>
+          </div>
+          <div class="live-hint" id="liveHint"><span class="dot ok beat"></span>
+            <span id="pollHint">登录进行中 · 画面实时同步，可直接点击拖动</span></div>
+          <div class="attention" id="attention"><span id="attentionText">需要你完成滑块验证</span>
+            <button class="x" id="attentionX">知道了</button></div>
+        </div>
+        <div class="bw-log">
+          <header><span id="bLogTitle">浏览器日志</span><span style="flex:1"></span>
+            <span id="resBar"></span><span id="fpsBar"></span>
+            <button class="ghost" id="btnClearLog" style="padding:1px 8px">清空</button></header>
+          <div class="logbox" id="logBody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ 账号表单 -->
+<div class="modal" id="mAccount">
+  <div class="dlg">
+    <div class="dlg-hd"><h3 id="aTitle">新增账号</h3><button class="x" data-close="mAccount">×</button></div>
+    <div class="dlg-bd">
+      <div class="field" id="aIdRow" style="display:none"><label>标识</label><input id="aId" disabled></div>
+      <div class="field"><label>账户名称</label><input id="aName" placeholder="九龙潭商户"></div>
+      <div class="field" id="aAccountRow"><label>登录账号</label><input id="aAccount" placeholder="vbk_xxxxxx"></div>
+      <div class="field"><label id="aPwdLabel">登录密码</label><input id="aPassword" type="password"></div>
+      <div class="field"><label>别名</label><input id="aRemark" placeholder="九龙潭"></div>
+      <div class="field"><label>景区ID</label><input id="aScenic" placeholder="PFTSCA01018088，可留空"></div>
+      <div class="field" id="aStatusRow" style="display:none"><label>状态</label>
+        <select id="aStatus"><option value="active">启用</option><option value="disabled">停用（不参与定时）</option></select></div>
+      <label class="check" id="aCollectRow"><input type="checkbox" id="aCollect" checked> 登录成功后立即采集近两年日数据</label>
+      <p class="note" id="aNote">创建后会打开该账号的浏览器并自动登录；遇到滑块或短信验证时在弹窗里完成。账号信息写入 config.yaml。</p>
+    </div>
+    <div class="dlg-ft">
+      <button class="btn" data-close="mAccount">取消</button>
+      <button class="btn btn--go" id="btnAcctSubmit">创建并登录</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ 新建任务 -->
+<div class="modal" id="mTask">
+  <div class="dlg" style="width:640px">
+    <div class="dlg-hd"><h3>新建采集任务</h3><button class="x" data-close="mTask">×</button></div>
+    <div class="dlg-bd">
+      <div class="field" style="align-items:flex-start"><label style="padding-top:2px">账号</label>
+        <div style="flex:1">
+          <div class="btn-row" style="margin-bottom:6px">
+            <button class="btn btn--sm" id="tPickFresh">选登录态有效的</button>
+            <button class="btn btn--sm" id="tPickAll">全选</button>
+            <button class="btn btn--sm" id="tPickNone">清空</button>
+          </div>
+          <div id="tAccounts" style="max-height:170px;overflow-y:auto;border:1px solid var(--edge);border-radius:var(--r);padding:6px 10px"></div>
         </div>
       </div>
 
-      
+      <div class="field"><label>采集内容</label>
+        <div class="seg" id="tMode">
+          <button aria-pressed="true" data-v="day">日数据（交易）</button>
+          <button aria-pressed="false" data-v="month">月数据（评级）</button>
+        </div></div>
+
+      <div id="tDay">
+        <div class="field"><label>时间</label>
+          <div class="seg" id="tDayHow">
+            <button aria-pressed="true" data-v="days">最近 N 天</button>
+            <button aria-pressed="false" data-v="range">日期区间</button>
+          </div></div>
+        <div class="field" id="tDaysRow"><label></label>
+          <input class="num" id="tDays" type="number" min="1" max="800" value="3">
+          <span class="unit">天，到昨天为止（T+1）</span></div>
+        <div id="tRangeRow" style="display:none">
+          <div class="field"><label>起始日期</label><input id="tStart" type="date"></div>
+          <div class="field"><label>截止日期</label><input id="tEnd" type="date"></div>
+          <p class="note" style="margin:-4px 0 10px 92px">长区间会自动按 30 天分批。</p>
         </div>
-      </details>
-
-      <details class="grp" open>
-        <summary>手动采集<span>跑一次，不影响定时</span></summary>
-        <div class="grp-body">
-<h3>按天采集</h3>
-      <div class="field"><label>回溯天数</label>
-        <input class="num" id="days" type="number" min="1" max="365" value="1">
-        <span class="unit">天，从昨天往前推</span></div>
-      <div class="field"><label>起始日期</label><input id="startDate" type="date"></div>
-      <div class="field"><label>截止日期</label><input id="endDate" type="date"></div>
-      <p class="note">填了日期区间就按区间跑，否则按回溯天数从昨天往前推。</p>
-      <button class="btn btn--go" id="btnDay">采集日数据</button>
-
-      <h3>按月采集</h3>
-      <div class="field"><label>月份</label><input id="month" type="month"></div>
-      <div class="field"><label>采哪些</label>
-        <select id="monthJobs">
-          <option value="">目的地评级 + 供应商评级</option>
-          <option value="rating">只采目的地评级</option>
-          <option value="score">只采供应商评级</option>
-        </select></div>
-      <p class="note">评级类接口只对上个月有数据，留空即取上月。月初目的地评级常常还没出数，
-        供应商评级已经有了 —— 这种情况会显示「部分完成」，已采到的照常入库并推送，
-        之后单独补「只采目的地评级」即可（定时会自动补）。</p>
-      <button class="btn btn--go" id="btnMonth">采集月数据</button>
-
-                <button class="btn btn--stop" id="btnStopTask" disabled>停止当前任务</button>
-      <p class="note" id="collectSink" style="margin:0 0 10px">
-        直写本地 MySQL；采集完成后按「设置」标签里「下游接口」的配置推送。</p>
-      
-        </div>
-      </details>
-
-    </div>
-
-    <div class="pane" id="pane-accounts">
-      <details class="grp" open>
-        <summary>新增账号<span>建号 → 登录 → 首采，一条 WebSocket 走完</span></summary>
-        <div class="grp-body">
-
-        <p class="note" style="margin:0 0 10px">
-          整个过程走同一条 WebSocket：建账号 → 开浏览器 → 填表登录 → 验证 →
-          保存登录态 → 首次采集，每一步都打在右下角日志里。账号标识取登录账号。</p>
-        <div class="field"><label>账户名称</label><input id="newName" placeholder="九龙潭商户"></div>
-        <div class="field"><label>登录账号</label><input id="newAccount" placeholder="vbk_xxxxxx"></div>
-        <div class="field"><label>登录密码</label><input id="newPassword" type="password"></div>
-        <div class="field"><label>别名</label><input id="newRemark" placeholder="九龙潭"></div>
-        <div class="field"><label>景区ID</label><input id="newScenic" placeholder="PFTSCA01018088，可留空"></div>
-        <label class="check">
-          <input type="checkbox" id="collectAfter" checked>
-          登录成功后立即采集近两年日数据
-        </label>
-        <button class="btn btn--go" id="btnNewLogin">创建账号并登录</button>
-      
-        </div>
-      </details>
-
-      <details class="grp">
-        <summary>排障</summary>
-        <div class="grp-body">
-          <button class="btn" id="btnRelease">释放 profile 占用</button>
-          <p class="note" style="margin:6px 0 0">
-            提示「profile 正被占用」时点这里。已不存在的持有进程会被自动清掉；
-            还活着的会告诉你 pid 和结束命令。</p>
-        </div>
-      </details>
-
-    </div>
-
-    <div class="pane" id="pane-cron">
-      <p class="note" style="margin:0 0 12px">
-        到点先采集、写本地 MySQL，采完自动推送下游。下面的「定时补推」只是兜底，
-        补推之前没推成功的，不必两边都开。</p>
-      <details class="grp" open>
-        <summary>定时采集</summary>
-        <div class="grp-body">
-
-      <p class="note" id="csState" style="margin:0 0 10px">未启用</p>
-      <label class="check"><input type="checkbox" id="csEnabled"> 启用定时采集</label>
-      <label class="check"><input type="checkbox" id="csDaily"> 每天采日数据</label>
-      <div class="field"><label>每天</label>
-        <input id="csDailyAt" type="time" value="02:30"></div>
-      <div class="field"><label>回补</label>
-        <input class="num" id="csDailyDays" type="number" min="1" max="365" value="3">
-        <span class="unit">天</span></div>
-      <label class="check"><input type="checkbox" id="csMonthly"> 每月采月数据（上月）</label>
-      <div class="field"><label>每月</label>
-        <input class="num" id="csMonthDay" type="number" min="1" max="28" value="6">
-        <span class="unit">号</span>
-        <input id="csMonthAt" type="time" value="03:00"></div>
-      <div class="field"><label>缺数补采</label>
-        <input class="num" id="csMonthRetry" type="number" min="0" max="27" value="7">
-        <span class="unit">天，0 = 不补</span></div>
-      <p class="note" id="csCatchup" style="margin:0 0 8px">
-        月任务之后的这几天里，每天同一时刻查本地库：上月哪张评级表还没数据，就只补那一张，补齐即停。</p>
-      <label class="check"><input type="checkbox" id="csSkipStale" checked>
-        登录态失效时跳过并发通知</label>
-      <p class="note" id="csNext">下次运行：—</p>
-      <div class="btn-row">
-        <button class="btn btn--go" id="btnCsSave">保存定时</button>
-        <button class="btn" id="btnCsPreview">预览会跑哪些账号</button>
       </div>
-      <div class="btn-row">
-        <button class="btn" id="btnCatchup">立即补采上月缺失评级</button>
+
+      <div id="tMonth" style="display:none">
+        <div class="field"><label>时间</label>
+          <div class="seg" id="tMonthHow">
+            <button aria-pressed="true" data-v="one">单月</button>
+            <button aria-pressed="false" data-v="range">月份区间</button>
+          </div></div>
+        <div class="field" id="tOneRow"><label></label><input id="tMonthVal" type="month">
+          <span class="unit">留空 = 上个月</span></div>
+        <div class="field" id="tMRangeRow" style="display:none"><label></label>
+          <input id="tMStart" type="month"><span class="unit">至</span><input id="tMEnd" type="month"></div>
+        <div class="field"><label>采哪些</label>
+          <label class="check" style="margin:0 12px 0 0"><input type="checkbox" id="tRating" checked> 目的地评级</label>
+          <label class="check" style="margin:0"><input type="checkbox" id="tScore" checked> 供应商评级</label></div>
+        <p class="note" style="margin:-4px 0 10px 92px">月初目的地评级常常还没出上月数据，会显示「部分完成」，已采到的照常入库推送。</p>
       </div>
-      <p class="note">采集完成后会自动推送下游（配置在「设置」标签），不用两边都配定时。</p>
 
-      
-        </div>
+      <details class="more">
+        <summary>高级</summary>
+        <div class="field"><label>写入方式</label>
+          <select id="tWrite">
+            <option value="">默认（覆盖：同日期 / 月份旧数据先清再写）</option>
+            <option value="upsert">只按唯一键更新，不删除</option>
+          </select></div>
       </details>
-
-      <details class="grp">
-        <summary>定时补推</summary>
-        <div class="grp-body">
-
-      <label class="check"><input type="checkbox" id="syDaily"> 每天同步交易数据</label>
-      <div class="field"><label>每天</label><input id="syDailyAt" type="time" value="03:30"></div>
-      <label class="check"><input type="checkbox" id="syMonthly"> 每月同步评级数据</label>
-      <div class="field"><label>每月</label>
-        <input class="num" id="syMonthDay" type="number" min="1" max="28" value="5">
-        <span class="unit">号</span>
-        <input id="syMonthAt" type="time" value="04:00"></div>
-      <p class="note" id="syNext">下次运行：—</p>
-
-      
-      <label class="check"><input type="checkbox" id="syAfter" checked>
-        采集完成后立刻推送本次数据</label>
-      <p class="note" style="margin:0 0 10px">
-        采集始终直写本地 MySQL；推送失败不影响入库，可在下方手动重推。</p>
-
-      
-        </div>
-      </details>
-
-      <details class="grp" open>
-        <summary>最近运行</summary>
-        <div class="grp-body">
-
-      <div class="sub" style="margin-top:0">采集</div>
-      <div id="csHistory" class="note">暂无记录</div>
-      <div class="sub">推送下游</div>
-      <div id="syHistory" class="note">暂无记录</div>
-      <details class="sub-grp">
-        <summary>调度日志</summary>
-        <div id="schedLogs" class="note">暂无</div>
-      </details>
-        </div>
-      </details>
-
     </div>
+    <div class="dlg-ft">
+      <span class="left" id="tSummary"></span>
+      <button class="btn" data-close="mTask">取消</button>
+      <button class="btn btn--go" id="btnTaskRun">立即运行</button>
+    </div>
+  </div>
+</div>
 
-    <div class="pane" id="pane-settings">
-      <details class="grp" open>
-        <summary>下游接口<span>采集完把数据推到哪</span></summary>
-        <div class="grp-body">
+<!-- ================================================================ 运行日志 -->
+<div class="modal" id="mLog">
+  <div class="dlg wide">
+    <div class="dlg-hd">
+      <h3 id="lTitle">运行日志</h3>
+      <span class="tag" id="lTag">—</span>
+      <button class="x" data-close="mLog">×</button>
+    </div>
+    <div class="dlg-bd">
+      <div class="btn-row" style="gap:18px;margin-bottom:10px;font-size:12.5px;color:var(--muted)" id="lMeta"></div>
+      <div class="logbox" id="runLog"></div>
+    </div>
+    <div class="dlg-ft">
+      <label class="check left" style="margin:0"><input type="checkbox" id="lFollow" checked> 自动滚到底</label>
+      <button class="btn" id="btnLogCopy">复制日志</button>
+      <button class="btn btn--stop" id="btnLogStop">停止任务</button>
+      <button class="btn" data-close="mLog">关闭</button>
+    </div>
+  </div>
+</div>
 
-      <p class="note" id="syncState" style="margin:0 0 10px">未启用</p>
+<!-- ================================================================ 试运行结果 -->
+<div class="modal" id="mDry">
+  <div class="dlg wide">
+    <div class="dlg-hd"><h3 id="dryTitle">试运行结果</h3><button class="x" data-close="mDry">×</button></div>
+    <div class="dlg-bd" id="dryBody"></div>
+    <div class="dlg-ft"><button class="btn" data-close="mDry">关闭</button></div>
+  </div>
+</div>
+
+<!-- ================================================================ 通知设置 -->
+<div class="modal" id="mNotify">
+  <div class="dlg">
+    <div class="dlg-hd"><h3>飞书通知</h3><span class="tag" id="fsTag">—</span><button class="x" data-close="mNotify">×</button></div>
+    <div class="dlg-bd">
+      <p class="note" style="margin:0 0 12px">需要拖滑块、填短信，或定时采集发现登录态失效时，推一条消息到飞书群，点消息里的链接直接打开该账号的浏览器。</p>
       <div class="field"><label>状态</label>
-        <select id="syEnabled"><option value="0">关闭</option><option value="1">开启</option></select></div>
-      <div class="field"><label>地址</label>
-        <input id="syUrl" placeholder="http://host:3000/v1/data/opinion/dataSync/crossDomainSync"></div>
-      <div class="field"><label>Key 头名</label><input id="syHeader" placeholder="xpftkey"></div>
-      <div class="field"><label>Key</label><input id="syKey" type="password" placeholder="pfk_…"></div>
-      <div class="field"><label>每批行数</label><input id="syBatch" type="number" min="1" max="2000" value="200"></div>
-
-      
-        </div>
-      </details>
-
-      <details class="grp">
-        <summary>表与主键<span>tableName / pkId 按下游文档填</span></summary>
-        <div class="grp-body">
-
-      <div id="syTables"></div>
-      <p class="note">tableName 留空就用本地表名。pkId 是<b>下游</b>要的主键，
-        与本地表的唯一索引不是一回事（本地交易表唯一键还含 period_type / signing_code /
-        biz_type），按下游文档填。</p>
-
-      <div class="btn-row" style="margin-top:14px">
-        <button class="btn btn--go" id="btnSyncSave">保存</button>
-        <button class="btn" id="btnSyncDry">试运行</button>
-      </div>
-      <div class="btn-row">
-        <button class="btn" id="btnSyncDay">立即同步日数据</button>
-        <button class="btn" id="btnSyncMonth">立即同步月数据</button>
-      </div>
-
-      
-        </div>
-      </details>
-
-      <details class="grp">
-        <summary>飞书通知<span>需要人工验证时叫你</span></summary>
-        <div class="grp-body">
-
-      <p class="note" id="fsState" style="margin-bottom:12px">未启用</p>
-      <div class="field">
-        <label>状态</label>
-        <select id="fsEnabled"><option value="0">关闭</option><option value="1">开启</option></select>
-      </div>
+        <select id="fsEnabled"><option value="0">关闭</option><option value="1">开启</option></select></div>
       <div class="field"><label>Webhook</label><input id="fsWebhook" placeholder="https://open.feishu.cn/…"></div>
       <div class="field"><label>签名密钥</label><input id="fsSecret" placeholder="机器人开了签名校验才填"></div>
       <div class="field"><label>控制台地址</label><input id="fsConsole" placeholder="http://内网IP:8800"></div>
       <div class="field"><label>平台名</label><input id="fsPlatform" placeholder="携程 VBooking"></div>
-
-      <div class='sub'>事件订阅（可选）</div>
-      <div class="field"><label>Token</label><input id="fsToken" placeholder="Verification Token"></div>
-      <div class="field"><label>加密 Key</label><input id="fsEncKey" placeholder="开了加密才填"></div>
-      <p class="note">回调地址填 <span id="cbUrl" style="color:var(--signal)"></span>，飞书的 URL 验证会自动通过。</p>
-
-      <div class="btn-row" style="margin-top:14px">
-        <button class="btn btn--go" id="btnCfgSave">保存</button>
-        <button class="btn" id="btnCfgTest">发测试通知</button>
-      </div>
-      <p class="note">需要拖滑块时会推一条消息，点消息里的链接可直接跳回这个账号的画面。</p>
-    
-        </div>
+      <details class="more">
+        <summary>事件订阅（可选）</summary>
+        <div class="field"><label>Token</label><input id="fsToken" placeholder="Verification Token"></div>
+        <div class="field"><label>加密 Key</label><input id="fsEncKey" placeholder="开了加密才填"></div>
+        <p class="note">回调地址填 <span id="cbUrl" style="color:var(--signal)"></span></p>
       </details>
-
     </div>
-  </section>
-
-  <section class="stage-wrap">
-    <div class="stage">
-      <canvas id="screen" width="1440" height="1080"></canvas>
-      <div id="vncHost"></div>
-      <div class="empty" id="empty">
-        <h2 id="emptyTitle">先打开浏览器</h2>
-        <p id="emptyText">浏览器在服务器上以无头方式运行，画面通过实时推流送到这里。
-          你可以直接点击、拖动、输入和滚动。</p>
-        <button class="btn btn--go" id="btnStart2">打开浏览器</button>
-      </div>
-      <div class="live-hint" id="liveHint">
-        <span class="dot ok beat"></span>
-        <span id="pollHint">登录进行中 · 画面实时同步，可直接点击拖动</span>
-      </div>
-      <div class="attention" id="attention">
-        <span id="attentionText">需要你完成滑块验证</span>
-        <button class="x" id="attentionX">知道了</button>
-      </div>
+    <div class="dlg-ft">
+      <button class="btn" id="btnCfgTest">发测试通知</button>
+      <button class="btn btn--go" id="btnCfgSave">保存</button>
     </div>
-
-    <div class="logs" id="logs">
-      <header>
-        <span id="logTitle">运行日志</span>
-        <span class="push"></span>
-        <button id="btnClearLog">清空</button>
-        <button id="btnFoldLog">收起</button>
-      </header>
-      <div class="body" id="logBody"></div>
-    </div>
-  </section>
-</main>
+  </div>
+</div>
 
 <input id="ime" autocomplete="off" aria-hidden="true">
 
@@ -690,23 +696,16 @@
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const canvas = $("screen"), ctx = canvas.getContext("2d", {alpha:false});
 
-let accounts = [], current = null, ws = null, loginWs = null;
+let accounts = [], runs = [], current = null, ws = null, loginWs = null;
 let streamMode = "cdp", rfb = null, vncReady = false;
-let browserLive = false, composing = false;
-let frames = 0, painted = 0;
+let browserLive = false, composing = false, frames = 0, painted = 0;
+let syncMeta = {};
 
-/* ---------------------------------------------------------------- 基础 */
-function log(msg, level="info", at=null){
-  const b = $("logBody"), row = document.createElement("div");
-  const t = document.createElement("span"); t.className = "t";
-  t.textContent = at || new Date().toTimeString().slice(0,8);
-  const m = document.createElement("span"); m.className = level; m.textContent = msg;
-  row.append(t, m); b.appendChild(row);
-  while (b.children.length > 400) b.removeChild(b.firstChild);
-  b.scrollTop = b.scrollHeight;
-}
+/* ================================================================ 基础 */
 function toast(text){
   document.querySelectorAll(".toast").forEach(n => n.remove());
   const el = document.createElement("div");
@@ -720,48 +719,240 @@ async function api(path, opts){
   if (!r.ok) throw new Error(d.detail || d.message || `HTTP ${r.status}`);
   return d;
 }
+const post = (path, body) => api(path, {method:"POST", body: JSON.stringify(body || {})});
+function fmtDur(s){
+  if (!s) return "—";
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m${String(s%60).padStart(2,"0")}s`;
+  return `${Math.floor(s/3600)}h${String(Math.floor(s%3600/60)).padStart(2,"0")}m`;
+}
+function setSeg(el, v){
+  el.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+}
+const segVal = (el) => el.querySelector('button[aria-pressed="true"]').dataset.v;
 
-/* ---------------------------------------------------------------- 标签页 */
-document.querySelectorAll(".tabs button").forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll(".tabs button").forEach(x =>
-      x.setAttribute("aria-selected", String(x === b)));
-    document.querySelectorAll(".pane").forEach(p =>
-      p.classList.toggle("on", p.id === "pane-" + b.dataset.pane));
-    if (b.dataset.pane === "run") $("badgeLogin").classList.remove("on");
-  };
+/* ---------------------------------------------------------------- 页面切换 */
+function showPage(name){
+  document.querySelectorAll(".nav button").forEach(b =>
+    b.setAttribute("aria-selected", String(b.dataset.page === name)));
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === "page-" + name));
+  try { localStorage.setItem("console.page", name); } catch(e){}
+  if (name === "tasks"){ loadRuns(); loadCollectSchedule(); loadSchedStatus(); }
+  if (name === "sync"){ loadSync(); loadSchedStatus(); }
+  if (name === "accounts") loadAccounts();
+}
+document.querySelectorAll(".nav button").forEach(b => b.onclick = () => showPage(b.dataset.page));
+
+/* ---------------------------------------------------------------- 弹窗 */
+const closeHooks = {};
+function openModal(id){ $(id).classList.add("on"); }
+function closeModal(id){
+  if (closeHooks[id] && closeHooks[id]() === false) return;
+  $(id).classList.remove("on");
+}
+document.addEventListener("click", (e) => {
+  const c = e.target.closest("[data-close]");
+  if (c){ closeModal(c.dataset.close); return; }
+  if (e.target.classList.contains("modal") && e.target.id !== "mBrowser") closeModal(e.target.id);
 });
-function flagLogin(){
-  const cur = document.querySelector('.tabs button[aria-selected="true"]');
-  if (!cur || cur.dataset.pane !== "run") $("badgeLogin").classList.add("on");
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (document.activeElement === $("ime")) return;     // 浏览器画面里的 Esc 要发给页面
+  const open = [...document.querySelectorAll(".modal.on")];
+  if (open.length) closeModal(open[open.length - 1].id);
+});
+
+/* ================================================================ 账户管理 */
+const lampOf = (a) => a.browser === "live" ? "info" : (a.is_fresh ? "ok" : (a.has_state ? "signal" : "stop"));
+const stateOf = (a) => a.is_fresh ? "有效" : (a.has_state ? "已过期" : "未登录");
+const stateCls = (a) => a.is_fresh ? "ok" : (a.has_state ? "warn" : "bad");
+
+async function loadAccounts(){
+  const d = await api("/api/accounts");
+  accounts = d.accounts;
+  streamMode = d.stream || "cdp";
+  $("ttl").textContent = d.ttl_hours;
+  $("modeBar").textContent = streamMode === "vnc" ? "画面：VNC" : "画面：CDP 实时流";
+  $("modeBar").title = d.mode_reason || "";
+
+  const stale = accounts.filter(a => !a.is_fresh && a.status !== "disabled").length;
+  $("stTotal").textContent = accounts.length;
+  $("stFresh").textContent = accounts.filter(a => a.is_fresh).length;
+  $("stStale").textContent = stale;
+  $("stLive").textContent = `${accounts.filter(a => a.browser === "live").length} / ${accounts.filter(a => a.task).length}`;
+  $("badgeAcct").textContent = stale ? String(stale) : "";
+
+  const body = $("acctRows");
+  if (!accounts.length){
+    body.innerHTML = `<tr><td colspan="8" class="empty-row">还没有账号，点右上角「新增账号」</td></tr>`;
+  } else body.innerHTML = accounts.map(a => `
+    <tr data-id="${esc(a.account_id)}">
+      <td><div class="cell-main">${esc(a.name || a.remark || a.account || a.account_id)}</div>
+          <div class="cell-sub mono">${esc(a.account || "（未配置登录账号）")}</div></td>
+      <td><div class="mono">${esc(a.account_id)}</div>
+          <div class="cell-sub mono">${a.scenic_id ? esc(a.scenic_id) : '<span style="color:var(--signal)">未绑定景区</span>'}</div></td>
+      <td>${a.status === "disabled" ? '<span class="tag">停用</span>' : '<span class="tag ok">启用</span>'}</td>
+      <td><span class="tag ${stateCls(a)}">${stateOf(a)}</span></td>
+      <td class="mono muted">${esc((a.login_at || "从未").replace("T", " ").slice(0, 16))}
+          ${a.region_count ? `<div class="cell-sub">${a.region_count} 个目的地</div>` : ""}</td>
+      <td>${a.browser === "live" ? '<span class="dot info beat"></span> 在线' : '<span class="muted">关闭</span>'}</td>
+      <td>${a.task ? `<a href="#" data-act="log" data-run="${esc(a.task_run_id)}" style="color:var(--signal)">${esc(a.task)}</a>` : '<span class="muted">—</span>'}</td>
+      <td><div class="acts">
+        <button class="btn btn--sm ${a.is_fresh ? "" : "btn--go"}" data-act="browser">${a.is_fresh ? "浏览器" : "去登录"}</button>
+        <button class="btn btn--sm" data-act="collect">采集</button>
+        <button class="btn btn--sm" data-act="edit">编辑</button>
+      </div></td>
+    </tr>`).join("");
+
+  // 任务页的账号筛选
+  const sel = $("runFilterAcct"), keep = sel.value;
+  sel.innerHTML = `<option value="">全部账号</option>` + accounts.map(a =>
+    `<option value="${esc(a.account_id)}">${esc(a.name || a.account || a.account_id)}</option>`).join("");
+  sel.value = keep;
+  if (current) paintBrowserHeader();
+  return d;
+}
+$("acctRows").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-act]"); if (!btn) return;
+  e.preventDefault();
+  const id = btn.closest("tr").dataset.id;
+  ({browser: () => openBrowser(id),
+    collect: () => openTaskDialog([id]),
+    edit: () => openAccountDialog(id),
+    log: () => openRunLog(btn.dataset.run)})[btn.dataset.act]();
+});
+$("btnAcctRefresh").onclick = () => loadAccounts().then(() => toast("已刷新"));
+
+/* ---------------------------------------------------------------- 新增 / 编辑账号 */
+let editing = null;
+function openAccountDialog(id){
+  editing = id || null;
+  const a = accounts.find(x => x.account_id === id) || {};
+  $("aTitle").textContent = id ? `编辑账号 · ${a.name || a.account || id}` : "新增账号";
+  $("aIdRow").style.display = id ? "" : "none";
+  $("aAccountRow").style.display = id ? "none" : "";
+  $("aStatusRow").style.display = id ? "" : "none";
+  $("aCollectRow").style.display = id ? "none" : "";
+  $("aId").value = id || "";
+  $("aName").value = a.name || "";
+  $("aAccount").value = "";
+  $("aPassword").value = "";
+  $("aPassword").placeholder = id ? (a.password_set ? "不改留空" : "未配置，填写后保存") : "";
+  $("aPwdLabel").textContent = id ? "新密码" : "登录密码";
+  $("aRemark").value = a.remark || "";
+  $("aScenic").value = a.scenic_id || "";
+  $("aStatus").value = a.status || "active";
+  $("aNote").textContent = id
+    ? "改密码不会让当前登录态失效（登录态是 Cookie），下次需要重新登录时才会用到。停用的账号不参与定时采集。"
+    : "创建后会打开该账号的浏览器并自动登录；遇到滑块或短信验证时在弹窗里完成。账号信息写入 config.yaml。";
+  $("btnAcctSubmit").textContent = id ? "保存" : "创建并登录";
+  openModal("mAccount");
+  setTimeout(() => (id ? $("aName") : $("aName")).focus(), 30);
+}
+$("btnAcctNew").onclick = () => openAccountDialog(null);
+$("btnAcctSubmit").onclick = async () => {
+  if (editing){
+    const a = accounts.find(x => x.account_id === editing) || {};
+    const patch = {};
+    const pick = (k, v) => { if (v !== (a[k] || "") && v !== "") patch[k] = v; };
+    pick("name", $("aName").value.trim());
+    pick("remark", $("aRemark").value.trim());
+    pick("scenic_id", $("aScenic").value.trim());
+    if ($("aStatus").value !== (a.status || "active")) patch.status = $("aStatus").value;
+    if ($("aPassword").value) patch.password = $("aPassword").value;
+    if (!Object.keys(patch).length){ toast("没有改动"); return; }
+    try {
+      const r = await api(`/api/accounts/${encodeURIComponent(editing)}`,
+                          {method:"PATCH", body: JSON.stringify(patch)});
+      toast(r.message); closeModal("mAccount"); loadAccounts();
+    } catch (e){ toast(e.message); }
+    return;
+  }
+  const body = {
+    name: $("aName").value.trim(), account: $("aAccount").value.trim(),
+    password: $("aPassword").value, remark: $("aRemark").value.trim(),
+    scenic_id: $("aScenic").value.trim(),
+  };
+  if (!body.account || !body.password){ toast("登录账号和密码都要填"); return; }
+  closeModal("mAccount");
+  // 建号 → 开浏览器 → 登录 → 首采，一条 WebSocket 走完，过程都在浏览器弹窗里
+  openBrowser(body.account, {placeholder:true, title: body.name || body.account});
+  resetSteps(); clearAttention();
+  log(`开始新增账号并登录：${body.account}`);
+  openLoginWs(body.account, {
+    action: "create_login", ...body, persist: true,
+    collect_after_login: $("aCollect").checked ? {job:"day", years:2} : null,
+  });
+};
+
+/* ================================================================ 浏览器弹窗 */
+function log(msg, level="info", at=null){
+  const b = $("logBody"), row = document.createElement("div");
+  const t = document.createElement("span"); t.className = "t";
+  t.textContent = at || new Date().toTimeString().slice(0,8);
+  const m = document.createElement("span"); m.className = level; m.textContent = msg;
+  row.append(t, m); b.appendChild(row);
+  while (b.children.length > 600) b.removeChild(b.firstChild);
+  b.scrollTop = b.scrollHeight;
 }
 
-/* ---------------------------------------------------------------- 状态 */
-function showUsing(account, password, source){
-  $("usingBox").style.display = "block";
-  $("usingAccount").textContent = account || "（用配置文件里的）";
-  // 密码只显示位数，不回显内容 —— 页面可能被人从背后看到
-  $("usingPwd").textContent = password ? "•".repeat(Math.min(password.length, 16))
-                                       + `（${password.length} 位）`
-                                       : "（用配置文件里的）";
-  $("usingSrc").textContent = source;
-  $("usingSrc").style.color = source === "接口传入" ? "var(--signal)" : "var(--muted)";
-  $("usingSave").textContent = $("persistCreds").checked
-    ? "登录成功后写回配置" : "本次不写回";
-  $("usingSave").style.color = "var(--muted)";
+function openBrowser(id, opts = {}){
+  if (current !== id){
+    stopVnc(); $("logBody").innerHTML = "";
+    current = id; resetSteps(); clearAttention();
+    $("smsBox").style.display = "none";
+    $("loginAcct").value = ""; $("loginPwd").value = "";
+  }
+  const a = accounts.find(x => x.account_id === id);
+  paintBrowserHeader(opts.title);
+  openModal("mBrowser");
+  connect();
+  setLive(!!a && a.browser === "live");
+  if (a){
+    log(`账号 ${a.account || id}${a.scenic_id ? "（景区 " + a.scenic_id + "）" : ""}`
+        + (a.login_at ? `，上次登录 ${a.login_at.replace("T", " ")}` : "，从未登录"));
+    if (a.task) log(`该账号正在采集：${a.task}（详细日志见任务管理）`, "warn");
+  }
 }
+function paintBrowserHeader(title){
+  const a = accounts.find(x => x.account_id === current);
+  $("bTitle").textContent = title || (a ? (a.name || a.account || a.account_id) : current);
+  if (!a){
+    $("bTag").textContent = "新建中"; $("bTag").className = "tag warn";
+    $("bDot").className = "dot signal"; $("bMeta").textContent = "";
+    ["bId","bScenic","bLogin","bFp"].forEach(k => $(k).textContent = "—");
+    $("bLoggedNote").style.display = "none";
+    return;
+  }
+  $("bTag").textContent = "登录态" + stateOf(a); $("bTag").className = "tag " + stateCls(a);
+  $("bDot").className = "dot " + lampOf(a);
+  $("bMeta").textContent = a.account || "";
+  $("bId").textContent = a.account_id;
+  $("bScenic").textContent = a.scenic_id || "未绑定";
+  $("bLogin").textContent = (a.login_at || "从未登录").replace("T", " ");
+  $("bFp").textContent = a.region_count ? `${a.region_count} 个目的地` : "未记录";
+  $("bLoggedNote").style.display = a.is_fresh ? "" : "none";
+}
+// 关弹窗只断开画面，浏览器保持运行；登录进行中要确认，断开会中止登录
+closeHooks.mBrowser = () => {
+  if (loginWs && !confirm("登录还在进行中，关闭会中止这次登录。确定关闭？")) return false;
+  if (loginWs){ try { loginWs.send(JSON.stringify({action:"abort"})); loginWs.close(); } catch(e){} }
+  if (ws){ ws.onclose = null; ws.close(); ws = null; }
+  stopVnc(); clearAttention();
+  browserLive = false;
+  loadAccounts();
+  return true;
+};
 
 function setStep(name, state){
   const li = document.querySelector(`.steps li[data-s="${name}"]`);
   if (li) li.className = state || "";
 }
 function resetSteps(){ document.querySelectorAll(".steps li").forEach(li => li.className = ""); }
-
 function needAttention(text){
   $("attentionText").textContent = text;
   $("attention").classList.add("on");
   $("captchaTip").style.display = "block";
-  flagLogin();
 }
 function clearAttention(){
   $("attention").classList.remove("on");
@@ -771,103 +962,36 @@ $("attentionX").onclick = () => $("attention").classList.remove("on");
 
 function setLive(on){
   browserLive = on;
-  $("liveDot").className = "dot" + (on ? " ok beat" : "");
-  $("liveText").textContent = on ? "浏览器运行中" : "浏览器未启动";
   canvas.classList.toggle("on", on && streamMode === "cdp");
   $("vncHost").classList.toggle("on", on && streamMode === "vnc");
   $("empty").style.display = on ? "none" : "block";
   ["btnLoginPage","btnFill","btnSave","btnStop"].forEach(id => $(id).disabled = !on);
-  // 「打开浏览器」是幂等的：已经开着就直接用，没开就先开。
-  // 所以不禁用它 —— 用户从别处切回来时，点一下就该能重新看到画面。
   $("btnStart").disabled = false;
-  $("btnStart").textContent = on ? "浏览器已在运行" : "打开浏览器";
+  $("btnStart").textContent = on ? "浏览器运行中 · 刷新画面" : "打开浏览器";
+  $("btnStart").classList.toggle("btn--go", !on);
+  if (!on){ $("emptyTitle").textContent = "浏览器未打开"; $("btnStart2").style.display = ""; }
   setStep("browser", on ? "done" : "");
 }
-
-/* ---------------------------------------------------------------- 账号 */
-async function loadAccounts(){
-  const d = await api("/api/accounts");
-  accounts = d.accounts;
-  streamMode = d.stream || "cdp";
-  $("ttl").textContent = `登录态有效期 ${d.ttl_hours} 小时`;
-  $("modeBar").textContent = streamMode === "vnc" ? "VNC 增量流" : "CDP 实时流";
-  $("modeBar").title = d.mode_reason || "";
-
-  // 分两组：已登录的只需要选中，未登录的才是要动手的
-  const menu = $("acctMenu"); menu.innerHTML = "";
-  const logged = accounts.filter(a => a.is_fresh);
-  const others = accounts.filter(a => !a.is_fresh);
-  const addGroup = (title, list) => {
-    if (!list.length) return;
-    const h = document.createElement("div");
-    h.className = "menu-group";
-    h.textContent = `${title}（${list.length}）`;
-    menu.appendChild(h);
-    for (const a of list){
-      const b = document.createElement("button");
-      b.innerHTML = `<span class="dot ${lampOf(a)}"></span><b>${a.account || a.account_id}</b>
-                     <small>${stateOf(a)}</small>`;
-      b.onclick = () => { menu.classList.remove("on"); selectAccount(a.account_id); };
-      menu.appendChild(b);
-    }
-  };
-  addGroup("已登录", logged);
-  addGroup("待登录", others);
-  if (!current && accounts.length) selectAccount(accounts[0].account_id);
-  else paintAcct();
-}
-const lampOf = (a) => a.browser === "live" ? "signal" : (a.is_fresh ? "ok" : (a.has_state ? "signal" : "stop"));
-const stateOf = (a) => a.browser === "live" ? "浏览器在线"
-                     : a.is_fresh ? "登录态有效" : (a.has_state ? "登录态已过期" : "未登录");
-
-function paintAcct(){
-  const a = accounts.find(x => x.account_id === current);
-  if (!a) return;
-  $("acctName").textContent = a.account || a.account_id;
-  $("acctState").textContent = stateOf(a);
-  $("acctDot").className = "dot " + lampOf(a);
-
-  $("cardName").textContent = a.account || a.account_id;
-  $("cardId").textContent = a.account_id;
-  $("cardScenic").textContent = a.scenic_id || "未绑定";
-  $("cardLogin").textContent = a.login_at || "从未登录";
-  $("cardFp").textContent = a.region_count ? `${a.region_count} 个目的地` : "未记录";
-  $("cardDot").className = "dot " + lampOf(a);
-  const tag = $("cardTag");
-  tag.textContent = stateOf(a);
-  tag.className = "tag " + (a.is_fresh ? "ok" : (a.has_state ? "warn" : "bad"));
-
-  // 已登录的账号不再摆一堆登录控件 —— 那正是之前最让人误解的地方
-  $("zoneLogged").style.display = a.is_fresh ? "block" : "none";
-  $("zoneLogin").style.display  = a.is_fresh ? "none" : "block";
-}
-$("acctBtn").onclick = () => {
-  const m = $("acctMenu"); const on = m.classList.toggle("on");
-  $("acctBtn").setAttribute("aria-expanded", String(on));
-};
-document.addEventListener("click", (e) => {
-  if (!e.target.closest(".acct-pick")) $("acctMenu").classList.remove("on");
-});
-
-function selectAccount(id){
-  if (current === id && ws) return;
-  stopVnc(); current = id; paintAcct(); resetSteps(); clearAttention();
-  $("usingBox").style.display = "none";
-  const a = accounts.find(x => x.account_id === id);
-  log(`已选择账号 ${a.account || id}${a.scenic_id ? "（景区 " + a.scenic_id + "）" : ""}`);
-  if (a.login_at) log(`上次登录 ${a.login_at}，目的地指纹 ${a.region_count} 个`);
-  connect();
-  setLive(a.browser === "live");
+function setStarting(on){
+  $("emptyTitle").textContent = on ? "正在打开浏览器" : "浏览器未打开";
+  $("emptyText").textContent = on
+    ? "新账号首次启动要初始化浏览器目录，通常十几秒。画面一就绪会自动出现。"
+    : "浏览器在服务器上运行，画面实时推到这里，可以直接点击、拖动、输入和滚动。";
+  $("btnStart2").style.display = on ? "none" : "";
 }
 
-/* ---------------------------------------------------------------- 主通道 */
 function connect(){
   if (ws){ ws.onclose = null; ws.close(); }
   const p = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${p}://${location.host}/ws/${current}`);
-  ws.onopen = () => { if (browserLive && streamMode === "cdp") send({type:"refresh_frame"}); };
-  ws.onmessage = (e) => handle(JSON.parse(e.data));
-  ws.onclose = () => { if (browserLive) log("连接中断，正在重连", "warn"); setTimeout(connect, 1500); };
+  const sock = new WebSocket(`${p}://${location.host}/ws/${encodeURIComponent(current)}`);
+  ws = sock;
+  sock.onopen = () => { if (browserLive && streamMode === "cdp") send({type:"refresh_frame"}); };
+  sock.onmessage = (e) => handle(JSON.parse(e.data));
+  sock.onclose = () => {
+    if (ws !== sock || !$("mBrowser").classList.contains("on")) return;
+    if (browserLive) log("画面连接中断，正在重连", "warn");
+    setTimeout(() => { if (ws === sock && $("mBrowser").classList.contains("on")) connect(); }, 1500);
+  };
 }
 function send(m){ if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
 
@@ -893,26 +1017,27 @@ function handle(m){
     case "status":
       log(m.message, m.state === "error" ? "error" : "info", m.at);
       if (m.state === "live"){
-        setLive(true);
+        setStarting(false); setLive(true);
         if (streamMode === "vnc") startVnc(); else send({type:"refresh_frame"});
       }
       if (m.state === "closed" || m.state === "error"){ setStarting(false); setLive(false); }
       break;
-    case "url": $("logTitle").textContent = "运行日志 · " + (m.title || m.url); break;
+    case "url": $("bLogTitle").textContent = "浏览器日志 · " + (m.title || m.url); break;
     case "auth":
       toast(m.ok ? "登录态已保存" : "登录态校验没通过：" + m.detail);
       loadAccounts(); break;
     case "task":
-      log(m.message, m.rc === undefined
-            ? (m.level === "done" ? "done" : m.level)
-            : (m.rc === 0 ? "done" : m.rc === 1 ? "warn" : "error"), m.at);
-      if (m.rc !== undefined){ $("btnStopTask").disabled = true; toast(m.message); loadAccounts(); }
+      // 采集日志完整版在任务管理里看，这里只提示开始和结束
+      if (m.rc !== undefined){
+        log(m.message, m.rc === 0 ? "done" : m.rc === 1 ? "warn" : "error", m.at);
+        loadAccounts();
+      }
       break;
-    default: log(m.message || JSON.stringify(m), m.level || "info", m.at);
+    default: if (m.message) log(m.message, m.level || "info", m.at);
   }
 }
 
-/* ---------------------------------------------------------------- 输入 */
+/* ---- 输入 ---- */
 function toPage(ev){
   const r = canvas.getBoundingClientRect();
   return {x:(ev.clientX - r.left) / r.width * canvas.width,
@@ -920,11 +1045,11 @@ function toPage(ev){
 }
 const mods = (e) => (e.altKey?1:0)|(e.ctrlKey?2:0)|(e.metaKey?4:0)|(e.shiftKey?8:0);
 const BTN = ["left","middle","right"];
-const cdp = () => browserLive && streamMode === "cdp";
-
+const cdp = () => browserLive && streamMode === "cdp" && $("mBrowser").classList.contains("on");
+let dragging = false;
 canvas.addEventListener("mousedown", (e) => {
   if (!cdp()) return;
-  e.preventDefault(); $("ime").focus({preventScroll:true});
+  e.preventDefault(); $("ime").focus({preventScroll:true}); dragging = true;
   const p = toPage(e);
   send({type:"mouse", action:"down", x:p.x, y:p.y, button:BTN[e.button]||"left",
         buttons:e.buttons, clickCount:e.detail||1, modifiers:mods(e)});
@@ -933,12 +1058,12 @@ canvas.addEventListener("mousemove", (e) => {
   if (!cdp()) return;
   const p = toPage(e);
   send({type:"mouse", action:"move", x:p.x, y:p.y,
-        button:e.buttons ? (BTN[e.button]||"left") : "none",
-        buttons:e.buttons, modifiers:mods(e)});
+        button:e.buttons ? (BTN[e.button]||"left") : "none", buttons:e.buttons, modifiers:mods(e)});
 });
 // 拖滑块时鼠标常会滑出画面，所以 mouseup 挂在 window 上
 window.addEventListener("mouseup", (e) => {
-  if (!cdp()) return;
+  if (!cdp() || !dragging) return;
+  dragging = false;
   const p = toPage(e);
   send({type:"mouse", action:"up", x:p.x, y:p.y, button:BTN[e.button]||"left",
         buttons:e.buttons, clickCount:e.detail||1, modifiers:mods(e)});
@@ -950,7 +1075,6 @@ canvas.addEventListener("wheel", (e) => {
   const p = toPage(e);
   send({type:"wheel", x:p.x, y:p.y, deltaX:e.deltaX, deltaY:e.deltaY, modifiers:mods(e)});
 }, {passive:false});
-
 const ime = $("ime");
 ime.addEventListener("compositionstart", () => composing = true);
 ime.addEventListener("compositionend", (e) => {
@@ -976,18 +1100,15 @@ ime.addEventListener("paste", (e) => {
   e.preventDefault();
 });
 
-/* ---------------------------------------------------------------- VNC */
+/* ---- VNC ---- */
 async function startVnc(){
   stopVnc();
   let RFB;
-  try {
-    ({default:RFB} = await import("https://cdn.jsdelivr.net/npm/@novnc/novnc@1.4.0/core/rfb.js"));
-  } catch (e){
-    log("noVNC 加载失败，改用 CONSOLE_STREAM=cdp 启动", "error"); return;
-  }
+  try { ({default:RFB} = await import("https://cdn.jsdelivr.net/npm/@novnc/novnc@1.4.0/core/rfb.js")); }
+  catch (e){ log("noVNC 加载失败，改用 CONSOLE_STREAM=cdp 启动", "error"); return; }
   const p = location.protocol === "https:" ? "wss" : "ws";
   $("vncHost").innerHTML = "";
-  rfb = new RFB($("vncHost"), `${p}://${location.host}/vnc/${current}`, {});
+  rfb = new RFB($("vncHost"), `${p}://${location.host}/vnc/${encodeURIComponent(current)}`, {});
   rfb.scaleViewport = true; rfb.resizeSession = false; rfb.focusOnClick = true;
   rfb.addEventListener("connect", () => { vncReady = true; log("VNC 画面已连接", "done"); });
   rfb.addEventListener("disconnect", () => { vncReady = false; });
@@ -998,252 +1119,153 @@ function stopVnc(){
   $("vncHost").innerHTML = "";
 }
 
-/* ---------------------------------------------------------------- 浏览器 */
+/* ---- 浏览器操作 ---- */
 async function startBrowser(){
   $("btnStart").disabled = $("btnStart2").disabled = true;
   setStarting(true);
   log("正在打开浏览器");
   try {
-    const r = await api(`/api/browser/${current}/start`, {method:"POST"});
+    const r = await post(`/api/browser/${encodeURIComponent(current)}/start`);
     streamMode = r.mode || streamMode;
-    if (r.healed) log(r.healed, "warn");     // 自动清了残留占用，说一声
+    if (r.healed) log(r.healed, "warn");
     log(r.message, r.reused ? "done" : "info");
     if (r.ready){
-      setLive(true);
+      setStarting(false); setLive(true);
       if (streamMode === "vnc") await startVnc(); else send({type:"refresh_frame"});
     }
-    $("btnStart").disabled = false;
-    // 未就绪时不翻状态：等 worker 推 status=live 事件再切，
-    // 那才是画面真正开始推流的时刻
   } catch (e){
     setStarting(false);
     log(e.message, "error");
     if (/占用/.test(e.message)){
-      log("点「释放 profile 占用」后重试", "warn");
+      log("展开左侧「浏览器与排障」，点「释放 profile 占用」后重试", "warn");
       toast("profile 被占用，点「释放 profile 占用」");
     } else toast(e.message);
-    $("btnStart").disabled = false;
   }
-  $("btnStart2").disabled = false;
+  $("btnStart").disabled = $("btnStart2").disabled = false;
   loadAccounts();
-}
-
-function setStarting(on){
-  $("liveDot").className = "dot" + (on ? " signal beat" : "");
-  $("liveText").textContent = on ? "浏览器启动中…" : "浏览器未启动";
-  $("emptyTitle").textContent = on ? "正在打开浏览器" : "先打开浏览器";
-  $("emptyText").textContent = on
-    ? "新账号首次启动要初始化浏览器目录，通常十几秒。画面一就绪会自动出现。"
-    : "浏览器在服务器上以无头方式运行，画面通过实时推流送到这里。你可以直接点击、拖动、输入和滚动。";
-  $("btnStart2").style.display = on ? "none" : "";
 }
 $("btnStart").onclick = startBrowser;
 $("btnStart2").onclick = startBrowser;
 $("btnStop").onclick = async () => {
   stopVnc();
-  await api(`/api/browser/${current}/stop`, {method:"POST"});
+  await post(`/api/browser/${encodeURIComponent(current)}/stop`);
   setLive(false); resetSteps(); log("浏览器已关闭"); loadAccounts();
 };
 $("btnRelease").onclick = async () => {
   $("btnRelease").disabled = true;
   try {
-    let r = await api(`/api/browser/${current}/release`, {method:"POST"});
+    let r = await post(`/api/browser/${encodeURIComponent(current)}/release`);
     (r.steps || []).forEach(x => log("  " + x));
     if (!r.ok){
       log(r.detail, "warn");
       if (r.holder_note) log(r.holder_note, "warn");
-      if (confirm(`${r.detail}\n\n${r.holder_note || ""}\n\n`
-                  + `强制释放会清掉占用记录并停止常驻浏览器。\n`
+      if (confirm(`${r.detail}\n\n${r.holder_note || ""}\n\n强制释放会清掉占用记录并停止常驻浏览器。\n`
                   + `如果那个进程确实还在用同一个 profile，请先结束它再继续。\n\n要强制释放吗？`)){
-        r = await api(`/api/browser/${current}/release?force=true`, {method:"POST"});
+        r = await post(`/api/browser/${encodeURIComponent(current)}/release?force=true`);
         (r.steps || []).forEach(x => log("  " + x));
       }
     }
-    log(r.ok ? "profile 已释放，可以重新启动浏览器" : `仍被占用：${r.detail}`,
-        r.ok ? "done" : "error");
+    log(r.ok ? "profile 已释放，可以重新打开浏览器" : `仍被占用：${r.detail}`, r.ok ? "done" : "error");
     if (!r.ok && r.hint) log(r.hint, "warn");
     toast(r.ok ? "已释放" : "仍被占用，看日志");
     setLive(false); loadAccounts();
   } catch (e){ log(e.message, "error"); toast(e.message); }
   $("btnRelease").disabled = false;
 };
-
 $("btnLoginPage").onclick = () => send({type:"nav", action:"goto"});
 $("btnFill").onclick = () => send({type:"fill_login"});
 $("btnSave").onclick = () => { log("正在保存登录态"); send({type:"save_state"}); };
 
-/* ---------------------------------------------------------------- 改密码 */
-$("btnPwdSave").onclick = async () => {
-  const pwd = $("newPwd").value;
-  if (!pwd){ toast("密码不能为空"); return; }
-  $("btnPwdSave").disabled = true;
-  try {
-    const r = await api(`/api/accounts/${current}`,
-                        {method:"PATCH", body:JSON.stringify({password:pwd})});
-    log(`${current}：${r.message}`, "done");
-    toast("密码已写入 config.yaml");
-    $("newPwd").value = "";
-  } catch (e){ log(e.message, "error"); toast(e.message); }
-  $("btnPwdSave").disabled = false;
-};
-$("btnRelogin").onclick = () => {
-  $("zoneLogin").style.display = "block";
-  $("loginAcct").focus();
-  log("已展开登录流程（登录态仍有效时通常不需要重登）", "warn");
-};
-
-/* ---------------------------------------------------------------- 新账户 */
-$("btnNewLogin").onclick = async () => {
-  const body = {
-    name: $("newName").value.trim(),
-    account: $("newAccount").value.trim(),
-    password: $("newPassword").value,
-    remark: $("newRemark").value.trim(),
-    scenic_id: $("newScenic").value.trim(),
-  };
-  if (!body.account || !body.password){ toast("登录账号和密码都要填"); return; }
-
-  // 整条链路走一条 WebSocket：建号 → 登录 → 首采，过程都进日志
-  $("btnNewLogin").disabled = true;
-  resetSteps(); clearAttention();
-  showUsing(body.account, body.password, "接口传入");
-  // 建号后流程在「运行」页展示，自动切过去
-  document.querySelector('.tabs button[data-pane="run"]').click();
-  log(`开始新增账号并登录：${body.account}`);
-
-  openLoginWs(body.account, {
-    action: "create_login", ...body,
-    persist: true,
-    collect_after_login: $("collectAfter").checked
-      ? {job: "day", years: 2} : null,
-  }, () => { $("btnNewLogin").disabled = false; });
-};
-
-/* ---------------------------------------------------------------- 自动登录 */
-async function startLogin(creds){
+/* ---- 登录 ---- */
+async function startLogin(){
   if (!browserLive) await startBrowser();
-  resetSteps(); clearAttention(); setStep("browser","done");
-  const acct = creds ? creds.account : $("loginAcct").value.trim();
-  const pwd  = creds ? creds.password : $("loginPwd").value;
-  showUsing(acct, pwd, (acct || pwd) ? "接口传入" : "配置文件");
-  openLoginWs(current, {
-    action: "login", account: acct, password: pwd,
-    persist: $("persistCreds").checked,
-  });
+  resetSteps(); clearAttention(); setStep("browser", "done");
+  const acct = $("loginAcct").value.trim(), pwd = $("loginPwd").value;
+  log(`使用${(acct || pwd) ? "页面填写" : "配置文件"}的凭据登录` + (acct ? `：${acct}` : ""));
+  openLoginWs(current, {action:"login", account:acct, password:pwd, persist:$("persistCreds").checked});
 }
+$("btnAutoLogin").onclick = startLogin;
 
-// 建号登录与普通登录共用同一条通道，区别只在第一条消息
-function openLoginWs(accountId, firstMessage, onClose){
+function openLoginWs(accountId, firstMessage){
   if (loginWs){ try { loginWs.close(); } catch(e){} }
   const p = location.protocol === "https:" ? "wss" : "ws";
-  loginWs = new WebSocket(`${p}://${location.host}/api/login/${accountId}`);
-  $("btnAbortLogin").disabled = false;
-
-  loginWs.onopen = () => {
+  const sock = new WebSocket(`${p}://${location.host}/api/login/${encodeURIComponent(accountId)}`);
+  loginWs = sock;
+  $("btnAbortLogin").disabled = false; $("btnAutoLogin").disabled = true;
+  sock.onopen = () => {
     $("liveHint").classList.add("on");
     $("pollHint").textContent = "登录进行中 · 画面实时同步，可直接点击拖动";
-    loginWs.send(JSON.stringify(firstMessage));
-    log(`已发起：${firstMessage.action}`
-        + (firstMessage.account ? ` / ${firstMessage.account}` : ""));
+    sock.send(JSON.stringify(firstMessage));
   };
-  loginWs.onmessage = (ev) => handleLogin(JSON.parse(ev.data));
-  loginWs.onclose = () => {
-    $("btnAbortLogin").disabled = true; loginWs = null;
+  sock.onmessage = (ev) => handleLogin(JSON.parse(ev.data));
+  sock.onclose = () => {
+    if (loginWs === sock) loginWs = null;
+    $("btnAbortLogin").disabled = true; $("btnAutoLogin").disabled = false;
     $("liveHint").classList.remove("on");
-    if (onClose) onClose();
   };
 }
-
 function handleLogin(m){
-    if (m.type === "config_changed"){
-      log(`配置已更新：${(m.fields || []).join("、")}`, "done", m.at);
-      loadAccounts();
-      return;
-    }
-    if (m.type === "notify"){
-      log(m.sent ? `已发飞书通知：${m.link}` : `飞书通知失败：${m.detail}`,
-          m.sent ? "done" : "warn");
-      return;
-    }
-    if (m.type === "login_note"){
-      log(`[登录] ${m.message}`, "info", m.at);
-      if (m.stage === "polling") $("pollHint").textContent =
-        `识别中 ${m.elapsed}s · ${m.title || m.url || ""}`.slice(0, 60);
-      return;
-    }
-    if (m.type !== "login"){ log(m.message || "", m.level || "info", m.at); return; }
-    log(`[登录] ${m.message}`, m.stage === "failed" ? "error" : "info", m.at);
-    switch (m.stage){
-      case "creating": setStep("browser","now"); break;
-      case "account_created":
-        toast(`账号已创建：${m.account_id}`);
-        // 主通道（画面帧）是按账号分的，账号一换必须重连，
-        // 否则新账号的浏览器画面永远出不来
-        current = m.account_id;
-        connect();
-        loadAccounts();
-        log(`画面通道已切到 ${m.account_id}`);
-        break;
-      case "starting": setStep("browser","now"); break;
-      case "filling":
-        setStep("browser","done"); setStep("filling","now");
-        if (m.login_account){
-          $("usingAccount").textContent = m.login_account;
-          $("usingSrc").textContent = m.credential_source || "—";
-          $("usingSrc").style.color = m.credential_source === "接口传入"
-            ? "var(--signal)" : "var(--muted)";
-        }
-        break;
-      case "submitted": setStep("filling","done"); break;
-      case "need_captcha":
-        setStep("filling","done"); setStep("captcha","now");
-        needAttention("需要你完成滑块验证 · 在画面里按住拖到底");
-        toast("需要你拖滑块，去右侧画面操作");
-        break;
-      case "need_sms":
-        setStep("captcha","done"); setStep("sms","now");
-        clearAttention();
-        $("smsBox").style.display = "block"; $("smsCode").focus();
-        needAttention(`短信验证码已发送${m.phone ? " · " + m.phone : ""} · 填进左侧`);
-        flagLogin();
-        break;
-      case "sms_filling": setStep("sms","done"); break;
-      case "collecting":
-        log(`已启动首次采集：${m.label}`, "done", m.at);
-        toast(`已开始采集：${m.label}`);
-        $("btnStopTask").disabled = false;
-        break;
-      case "collect_failed": toast(m.message); break;
-      case "success":
-        ["filling","captcha","sms","done"].forEach(s => setStep(s,"done"));
-        if (m.persisted){
-          $("usingSave").textContent =
-            `已写回配置（${(m.persisted_fields || []).join("、") || "凭据"}）`;
-          $("usingSave").style.color = "var(--ok)";
-        } else {
-          $("usingSave").textContent = "未写回（未改动或已关闭保存）";
-          $("usingSave").style.color = "var(--muted)";
-        }
-        clearAttention(); $("smsBox").style.display = "none";
-        $("btnAbortLogin").disabled = true;
-        toast("登录成功，登录态已保存"); loadAccounts();
-        break;
-      case "failed": case "aborted":
-        document.querySelectorAll(".steps li.now").forEach(li => li.className = "bad");
-        clearAttention(); $("smsBox").style.display = "none";
-        $("btnAbortLogin").disabled = true;
-        toast(m.message || "登录失败");
-        break;
-    }
+  if (m.type === "config_changed"){
+    log(`配置已更新：${(m.fields || []).join("、")}`, "done", m.at); loadAccounts(); return;
+  }
+  if (m.type === "notify"){
+    log(m.sent ? `已发飞书通知：${m.link}` : `飞书通知失败：${m.detail}`, m.sent ? "done" : "warn"); return;
+  }
+  if (m.type === "login_note"){
+    log(`[登录] ${m.message}`, "info", m.at);
+    if (m.stage === "polling") $("pollHint").textContent =
+      `识别中 ${m.elapsed}s · ${m.title || m.url || ""}`.slice(0, 60);
+    return;
+  }
+  if (m.type !== "login"){ if (m.message) log(m.message, m.level || "info", m.at); return; }
+  log(`[登录] ${m.message}`, m.stage === "failed" ? "error" : "info", m.at);
+  switch (m.stage){
+    case "creating": setStep("browser", "now"); break;
+    case "account_created":
+      toast(`账号已创建：${m.account_id}`);
+      // 画面通道按账号分，账号标识一换必须重连，否则新账号的画面出不来
+      current = m.account_id; connect();
+      loadAccounts().then(() => paintBrowserHeader());
+      break;
+    case "starting": setStep("browser", "now"); break;
+    case "filling":
+      setStep("browser", "done"); setStep("filling", "now");
+      if (m.login_account) log(`登录账号：${m.login_account}（${m.credential_source || "—"}）`);
+      break;
+    case "submitted": setStep("filling", "done"); break;
+    case "need_captcha":
+      setStep("filling", "done"); setStep("captcha", "now");
+      needAttention("需要你完成滑块验证 · 在画面里按住拖到底");
+      break;
+    case "need_sms":
+      setStep("captcha", "done"); setStep("sms", "now"); clearAttention();
+      $("smsBox").style.display = "block"; $("smsCode").focus();
+      needAttention(`短信验证码已发送${m.phone ? " · " + m.phone : ""} · 填在左侧`);
+      break;
+    case "sms_filling": setStep("sms", "done"); break;
+    case "collecting":
+      log(`已开始首次采集：${m.label}（详细日志见任务管理）`, "done", m.at);
+      toast(`已开始采集：${m.label}`);
+      break;
+    case "collect_failed": toast(m.message); break;
+    case "success":
+      ["filling","captcha","sms","done"].forEach(s => setStep(s, "done"));
+      clearAttention(); $("smsBox").style.display = "none";
+      toast("登录成功，登录态已保存"); loadAccounts();
+      break;
+    case "failed": case "aborted":
+      document.querySelectorAll(".steps li.now").forEach(li => li.className = "bad");
+      clearAttention(); $("smsBox").style.display = "none";
+      toast(m.message || "登录失败");
+      break;
+  }
 }
-
-$("btnAutoLogin").onclick = () => startLogin(null);
 $("btnSms").onclick = () => {
   const code = $("smsCode").value.trim();
   if (!code || !loginWs) return;
   loginWs.send(JSON.stringify({action:"sms_code", code}));
   $("smsCode").value = ""; $("smsBox").style.display = "none";
-  clearAttention(); setStep("sms","now");
+  clearAttention(); setStep("sms", "now");
 };
 $("smsCode").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnSms").onclick(); });
 $("btnAbortLogin").onclick = () => {
@@ -1251,65 +1273,220 @@ $("btnAbortLogin").onclick = () => {
   document.querySelectorAll(".steps li.now").forEach(li => li.className = "bad");
   clearAttention();
 };
+$("btnClearLog").onclick = () => $("logBody").innerHTML = "";
 
-/* ---------------------------------------------------------------- 采集 */
-async function runCollect(mode, params){
+setInterval(() => {
+  if (!browserLive){ $("fpsBar").textContent = ""; frames = painted = 0; return; }
+  $("fpsBar").textContent = streamMode === "vnc" ? (vncReady ? "增量流" : "连接中") : `${painted} fps`;
+  if (frames > 0 && painted === 0) log("收到画面但未能绘制，试试刷新页面", "warn");
+  frames = painted = 0;
+}, 1000);
+
+/* ================================================================ 任务管理 */
+const SRC = {manual:"手动", schedule:"定时", catchup:"补采", login:"首采"};
+const RUN_CLS = {queued:"info", running:"info", success:"ok", partial:"warn",
+                 failed:"bad", stopped:"bad", skipped:""};
+
+async function loadRuns(){
   try {
-    const r = await api(`/api/collect/${current}/${mode}`,
-                        {method:"POST", body:JSON.stringify(params)});
-    log(`已开始：${r.label}`, "done");
-    $("btnStopTask").disabled = false;
-    $("logs").classList.remove("min"); $("btnFoldLog").textContent = "收起";
-  } catch (e){ log(e.message, "error"); toast(e.message); }
+    const d = await api("/api/runs?limit=200");
+    runs = d.runs || [];
+  } catch (e){ return; }
+  const active = runs.filter(r => r.status === "queued" || r.status === "running").length;
+  $("badgeTasks").textContent = active ? String(active) : "";
+  const fa = $("runFilterAcct").value, fs = $("runFilterStatus").value;
+  const list = runs.filter(r => (!fa || r.account_id === fa) && (!fs ||
+    (fs === "active" ? ["queued","running"].includes(r.status)
+     : fs === "failed" ? ["failed","stopped"].includes(r.status) : r.status === fs)));
+  $("runCount").textContent = `${list.length} 条${active ? ` · ${active} 个进行中` : ""}`;
+  const name = (id) => { const a = accounts.find(x => x.account_id === id); return a ? (a.name || a.account || id) : id; };
+  $("runRows").innerHTML = list.length ? list.map(r => `
+    <tr class="click" data-run="${esc(r.run_id)}">
+      <td class="mono muted">${esc(r.created_at.slice(5, 16))}</td>
+      <td><div>${esc(name(r.account_id))}</div><div class="cell-sub mono">${esc(r.account_id)}</div></td>
+      <td><div>${esc(r.label)}</div>${r.detail ? `<div class="cell-sub">${esc(r.detail)}</div>` : ""}</td>
+      <td class="muted">${esc(SRC[r.source] || r.source)}</td>
+      <td><span class="tag ${RUN_CLS[r.status] || ""}">${r.status === "running" ? '<span class="dot info beat" style="width:6px;height:6px;margin-right:4px"></span>' : ""}${esc(r.status_text)}</span></td>
+      <td class="right mono muted">${fmtDur(r.duration)}</td>
+      <td><div class="acts">
+        ${r.has_log ? `<button class="btn btn--sm" data-act="log">日志</button>` : ""}
+        ${r.status === "running" ? `<button class="btn btn--sm btn--stop" data-act="stop">停止</button>` : ""}
+        ${r.status === "queued" ? `<button class="btn btn--sm btn--stop" data-act="stop">取消</button>` : ""}
+      </div></td>
+    </tr>`).join("")
+    : `<tr><td colspan="7" class="empty-row">没有运行记录。点右上角「新建采集任务」开始。</td></tr>`;
 }
-$("btnDay").onclick = () => {
-  const p = {};
-  if ($("startDate").value && $("endDate").value){
-    p.start_date = $("startDate").value; p.end_date = $("endDate").value;
-  } else if ($("endDate").value) p.end_date = $("endDate").value;
-  else p.days = $("days").value || 1;
-  runCollect("day", p);
+$("runRows").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr[data-run]"); if (!tr) return;
+  const btn = e.target.closest("[data-act]");
+  const id = tr.dataset.run;
+  if (btn && btn.dataset.act === "stop"){
+    try { const r = await post(`/api/runs/${encodeURIComponent(id)}/stop`); toast(r.message); loadRuns(); }
+    catch (err){ toast(err.message); }
+    return;
+  }
+  const r = runs.find(x => x.run_id === id);
+  if (r && !r.has_log){ toast(r.detail || "这条记录没有运行日志"); return; }
+  openRunLog(id);
+});
+$("runFilterAcct").onchange = loadRuns;
+$("runFilterStatus").onchange = loadRuns;
+$("btnRunsRefresh").onclick = loadRuns;
+
+/* ---------------------------------------------------------------- 运行日志弹窗 */
+let logRun = null, logNext = 0, logTimer = null;
+async function openRunLog(runId){
+  if (!runId) return;
+  logRun = runId; logNext = 0;
+  $("runLog").innerHTML = ""; $("lMeta").innerHTML = "";
+  $("lTitle").textContent = "运行日志"; $("lTag").textContent = "加载中"; $("lTag").className = "tag";
+  openModal("mLog");
+  await pollRunLog();
+}
+async function pollRunLog(){
+  clearTimeout(logTimer);
+  if (!logRun || !$("mLog").classList.contains("on")) return;
+  const id = logRun;
+  let d;
+  try { d = await api(`/api/runs/${encodeURIComponent(id)}/log?after=${logNext}`); }
+  catch (e){ $("lTag").textContent = e.message; $("lTag").className = "tag bad"; return; }
+  if (id !== logRun) return;
+  const r = d.run, box = $("runLog");
+  $("lTitle").textContent = r.label;
+  $("lTag").textContent = r.status_text; $("lTag").className = "tag " + (RUN_CLS[r.status] || "");
+  $("lMeta").innerHTML = [
+    ["账号", r.account_id], ["来源", SRC[r.source] || r.source],
+    ["开始", r.started_at || "—"], ["结束", r.finished_at || "—"], ["耗时", fmtDur(r.duration)],
+  ].map(([k, v]) => `<span>${k} <b style="color:var(--ink);font-family:var(--mono)">${esc(v)}</b></span>`).join("")
+    + (r.detail ? `<span style="color:var(--signal)">${esc(r.detail)}</span>` : "");
+  const frag = document.createDocumentFragment();
+  for (const ln of d.lines){
+    const row = document.createElement("div");
+    const t = document.createElement("span"); t.className = "t"; t.textContent = ln.at;
+    const m = document.createElement("span"); m.className = ln.level; m.textContent = ln.message;
+    row.append(t, m); frag.appendChild(row);
+  }
+  box.appendChild(frag);
+  logNext = d.next;
+  if (d.lines.length && $("lFollow").checked) box.scrollTop = box.scrollHeight;
+  if (!box.children.length) box.innerHTML = `<div class="t">${r.status === "queued" ? "排队中，轮到时开始输出…" : "没有日志"}</div>`;
+  else if (box.firstChild && box.firstChild.className === "t") box.removeChild(box.firstChild);
+  const live = r.status === "queued" || r.status === "running";
+  $("btnLogStop").style.display = live ? "" : "none";
+  $("btnLogStop").textContent = r.status === "queued" ? "取消排队" : "停止任务";
+  if (live) logTimer = setTimeout(pollRunLog, 1200);
+  else loadRuns();
+}
+closeHooks.mLog = () => { clearTimeout(logTimer); logRun = null; return true; };
+$("btnLogStop").onclick = async () => {
+  if (!logRun) return;
+  try { const r = await post(`/api/runs/${encodeURIComponent(logRun)}/stop`); toast(r.message); }
+  catch (e){ toast(e.message); }
 };
-$("btnMonth").onclick = () => {
-  const p = {};
-  if ($("month").value) p.month = $("month").value;
-  if ($("monthJobs").value) p.jobs = [$("monthJobs").value];
-  runCollect("month", p);
-};
-$("btnStopTask").onclick = async () => {
-  await api(`/api/collect/${current}/stop`, {method:"POST"});
-  log("已请求停止任务", "warn");
+$("btnLogCopy").onclick = async () => {
+  const text = [...$("runLog").children].map(d => d.textContent).join("\n");
+  try { await navigator.clipboard.writeText(text); toast("已复制"); }
+  catch (e){ toast("复制失败，浏览器不允许访问剪贴板"); }
 };
 
-/* ---------------------------------------------------------------- 飞书 */
-async function loadSettings(){
-  const d = await api("/api/settings"), f = d.feishu || {};
-  $("fsEnabled").value = f.enabled ? "1" : "0";
-  $("fsWebhook").value = f.webhook || "";
-  $("fsSecret").value = f.secret || "";
-  $("fsToken").value = f.verify_token || "";
-  $("fsEncKey").value = f.encrypt_key || "";
-  $("fsConsole").value = f.console_url || "";
-  $("fsPlatform").value = f.platform || "";
-  $("cbUrl").textContent = location.origin + d.callback_url;
-  const on = f.enabled && f.webhook_set;
-  $("fsState").textContent = on ? "已开启，需要人工验证时会推消息" : "未启用，需要人工验证时不会通知你";
-  $("fsState").style.color = on ? "var(--ok)" : "var(--muted)";
+/* ---------------------------------------------------------------- 新建任务 */
+function lastMonth(){
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
-$("btnCfgSave").onclick = async () => {
-  await api("/api/settings", {method:"POST", body:JSON.stringify({feishu:{
-    enabled: $("fsEnabled").value === "1",
-    webhook: $("fsWebhook").value.trim(), secret: $("fsSecret").value.trim(),
-    verify_token: $("fsToken").value.trim(), encrypt_key: $("fsEncKey").value.trim(),
-    console_url: $("fsConsole").value.trim(),
-    platform: $("fsPlatform").value.trim() || "携程 VBooking",
-  }})});
-  toast("通知设置已保存"); loadSettings();
+function openTaskDialog(preselect){
+  const pre = new Set(preselect || accounts.filter(a => a.is_fresh && a.status !== "disabled").map(a => a.account_id));
+  $("tAccounts").innerHTML = accounts.length ? accounts.map(a => `
+    <label class="check" style="display:flex;margin:4px 0">
+      <input type="checkbox" value="${esc(a.account_id)}" ${pre.has(a.account_id) ? "checked" : ""}>
+      <span style="flex:1">${esc(a.name || a.account || a.account_id)}
+        <span class="mono" style="color:var(--muted);font-size:12px">${esc(a.account_id)}</span></span>
+      <span class="tag ${stateCls(a)}">${stateOf(a)}</span>
+      ${a.task ? '<span class="tag info">采集中</span>' : ""}
+    </label>`).join("") : '<p class="note">还没有账号</p>';
+  if (!$("tMonthVal").value) $("tMonthVal").placeholder = lastMonth();
+  updateTaskSummary();
+  openModal("mTask");
+}
+const pickAccts = (fn) => { $("tAccounts").querySelectorAll("input").forEach(i => {
+  const a = accounts.find(x => x.account_id === i.value); i.checked = fn(a); }); updateTaskSummary(); };
+$("tPickFresh").onclick = () => pickAccts(a => a.is_fresh && a.status !== "disabled");
+$("tPickAll").onclick = () => pickAccts(() => true);
+$("tPickNone").onclick = () => pickAccts(() => false);
+$("tAccounts").addEventListener("change", updateTaskSummary);
+
+for (const [segId, fn] of [["tMode", (v) => { $("tDay").style.display = v === "day" ? "" : "none";
+                                              $("tMonth").style.display = v === "month" ? "" : "none"; }],
+                           ["tDayHow", (v) => { $("tDaysRow").style.display = v === "days" ? "" : "none";
+                                                $("tRangeRow").style.display = v === "range" ? "" : "none"; }],
+                           ["tMonthHow", (v) => { $("tOneRow").style.display = v === "one" ? "" : "none";
+                                                  $("tMRangeRow").style.display = v === "range" ? "" : "none"; }]]){
+  $(segId).addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    setSeg($(segId), b.dataset.v); fn(b.dataset.v); updateTaskSummary();
+  });
+}
+["tDays","tStart","tEnd","tMonthVal","tMStart","tMEnd","tRating","tScore"].forEach(id =>
+  $(id).addEventListener("input", updateTaskSummary));
+
+function buildTask(){
+  const ids = [...$("tAccounts").querySelectorAll("input:checked")].map(i => i.value);
+  const mode = segVal($("tMode")), params = {};
+  if ($("tWrite").value) params.write_mode = $("tWrite").value;
+  let desc = "";
+  if (mode === "day"){
+    if (segVal($("tDayHow")) === "range"){
+      if (!$("tStart").value || !$("tEnd").value) return {err: "请选择起始和截止日期"};
+      if ($("tStart").value > $("tEnd").value) return {err: "起始日期晚于截止日期"};
+      params.start_date = $("tStart").value; params.end_date = $("tEnd").value;
+      desc = `日数据 ${params.start_date} ~ ${params.end_date}`;
+    } else {
+      params.days = Math.max(1, parseInt($("tDays").value, 10) || 1);
+      desc = `日数据 最近 ${params.days} 天`;
+    }
+  } else {
+    const jobs = [];
+    if ($("tRating").checked) jobs.push("rating");
+    if ($("tScore").checked) jobs.push("score");
+    if (!jobs.length) return {err: "至少选一类评级"};
+    if (jobs.length === 1) params.jobs = jobs;
+    if (segVal($("tMonthHow")) === "range"){
+      if (!$("tMStart").value || !$("tMEnd").value) return {err: "请选择起止月份"};
+      if ($("tMStart").value > $("tMEnd").value) return {err: "起始月份晚于截止月份"};
+      params.start_month = $("tMStart").value; params.end_month = $("tMEnd").value;
+      desc = `月数据 ${params.start_month} ~ ${params.end_month}`;
+    } else {
+      if ($("tMonthVal").value) params.month = $("tMonthVal").value;
+      desc = `月数据 ${params.month || lastMonth() + "（上月）"}`;
+    }
+    desc += jobs.length === 1 ? (jobs[0] === "rating" ? " · 目的地评级" : " · 供应商评级") : "";
+  }
+  if (!ids.length) return {err: "至少选一个账号"};
+  return {ids, mode, params, desc};
+}
+function updateTaskSummary(){
+  const t = buildTask();
+  $("tSummary").textContent = t.err ? t.err : `${t.ids.length} 个账号 · ${t.desc}`;
+  $("tSummary").style.color = t.err ? "var(--signal)" : "var(--muted)";
+}
+$("btnTaskNew").onclick = () => openTaskDialog(null);
+$("btnTaskRun").onclick = async () => {
+  const t = buildTask();
+  if (t.err){ toast(t.err); return; }
+  $("btnTaskRun").disabled = true;
+  try {
+    const r = await post("/api/runs", {account_ids: t.ids, mode: t.mode, params: t.params});
+    toast(r.message); closeModal("mTask");
+    if (!$("page-tasks").classList.contains("on")) showPage("tasks"); else loadRuns();
+    if (r.runs && r.runs.length) openRunLog(r.runs[0].run_id);
+  } catch (e){ toast(e.message); }
+  $("btnTaskRun").disabled = false;
 };
-$("btnCfgTest").onclick = async () => {
-  const r = await api(`/api/settings/feishu/test?account_id=${current}`, {method:"POST"});
-  log(r.ok ? "测试通知已发出，去飞书群里看" : `测试失败：${r.detail}`, r.ok ? "done" : "error");
-  toast(r.ok ? "测试通知已发出" : r.detail);
+$("btnCatchup").onclick = async () => {
+  try {
+    const r = await post("/api/collect/schedule/catchup");
+    toast(r.message); loadRuns();
+  } catch (e){ toast(e.message); }
 };
 
 /* ---------------------------------------------------------------- 定时采集 */
@@ -1324,72 +1501,81 @@ async function loadCollectSchedule(){
   $("csMonthAt").value = d.monthly_at || "03:00";
   $("csMonthRetry").value = d.monthly_retry_days ?? 7;
   $("csSkipStale").checked = d.skip_stale_login !== false;
-  $("csNext").textContent =
-    `下次运行：日 ${d.next_daily || "未启用"} · 月 ${d.next_monthly || "未启用"}`;
+  $("csNext").textContent = `下次运行：日 ${d.next_daily || "未启用"} · 月 ${d.next_monthly || "未启用"}`;
   $("csCatchup").textContent = d.catchup
     ? `${d.catchup}（当前目标月份 ${d.target_month}）`
-    : "未开启缺数补采：月任务那天评级没出数的话，需要手动补。";
+    : "月任务之后的这几天里，每天同一时刻查本地库，上月哪张评级表还没数据就只补那一张，补齐即停。";
   const on = d.enabled && (d.daily_enabled || d.monthly_enabled);
-  $("csState").textContent = on ? "已启用，到点自动采集并推送下游"
-                                : "未启用，只能手动点采集";
-  $("csState").style.color = on ? "var(--ok)" : "var(--muted)";
+  $("csTag").textContent = on ? "已启用" : "未启用";
+  $("csTag").className = "tag " + (on ? "ok" : "");
 }
-
 $("btnCsSave").onclick = async () => {
   try {
-    const r = await api("/api/collect/schedule", {method:"POST", body:JSON.stringify({
+    const r = await post("/api/collect/schedule", {
       enabled: $("csEnabled").checked,
-      daily_enabled: $("csDaily").checked,
-      daily_at: $("csDailyAt").value,
+      daily_enabled: $("csDaily").checked, daily_at: $("csDailyAt").value,
       daily_days: parseInt($("csDailyDays").value, 10) || 3,
       monthly_enabled: $("csMonthly").checked,
       monthly_day: parseInt($("csMonthDay").value, 10) || 6,
       monthly_at: $("csMonthAt").value,
       monthly_retry_days: Math.max(0, parseInt($("csMonthRetry").value, 10) || 0),
       skip_stale_login: $("csSkipStale").checked,
-    })});
-    toast("定时采集已保存");
-    log(`定时采集已保存，下次：日 ${r.next_daily || "未启用"} · 月 ${r.next_monthly || "未启用"}`, "done");
+    });
+    toast(`定时采集已保存，下次：日 ${r.next_daily || "未启用"} · 月 ${r.next_monthly || "未启用"}`);
     loadCollectSchedule();
-  } catch (e){ log(e.message, "error"); toast(e.message); }
+  } catch (e){ toast(e.message); }
 };
-
-const JOB_NAMES = {daily: "日数据", monthly: "月数据", catchup: "评级补采"};
-const MJOB_NAMES = {rating: "目的地评级", score: "供应商评级"};
+const JOB_NAMES = {daily:"日数据", monthly:"月数据", catchup:"评级补采"};
+const MJOB = {rating:"目的地评级", score:"供应商评级"};
 function describeParams(p){
   if (p.days) return `近 ${p.days} 天`;
-  if (p.month) return p.month + (p.jobs ? "（" + p.jobs.map(j => MJOB_NAMES[j] || j).join("、") + "）" : "");
+  if (p.month) return p.month + (p.jobs ? "（" + p.jobs.map(j => MJOB[j] || j).join("、") + "）" : "");
   return JSON.stringify(p);
 }
 $("btnCsPreview").onclick = async () => {
+  const box = $("csPreview");
+  box.innerHTML = `<p class="note">计算中…</p>`;
+  const out = [];
   try {
     for (const job of ["daily", "monthly", "catchup"]){
       const d = await api(`/api/collect/schedule/preview?job=${job}`);
-      const name = JOB_NAMES[job];
-      if (d.reason){ log(`${name}：${d.reason}`, "warn"); continue; }
-      if (!d.items.length){
-        log(job === "catchup" ? `${name}：上月（${d.month}）评级都已采齐`
-                              : `${name}：没有符合条件的账号`, job === "catchup" ? "done" : "warn");
-        continue;
-      }
-      d.items.forEach(it => log(
-        `  ${name} · ${it.account_id}：` +
-        (it.skip ? `跳过（${it.skip}）` : `采集 ${describeParams(it.params)}`),
-        it.skip ? "warn" : "info"));
+      const lines = d.reason ? [`<span style="color:var(--signal)">${esc(d.reason)}</span>`]
+        : !d.items.length ? [job === "catchup" ? `上月（${esc(d.month)}）评级都已采齐` : "没有符合条件的账号"]
+        : d.items.map(it => `${esc(it.account_id)}：` + (it.skip
+            ? `<span style="color:var(--signal)">跳过（${esc(it.skip)}）</span>`
+            : `采集 ${esc(describeParams(it.params))}`));
+      out.push(`<div class="sub">${JOB_NAMES[job]}</div>` + lines.map(l => `<div class="kv"><b>${l}</b></div>`).join(""));
     }
-    $("logs").classList.remove("min"); $("btnFoldLog").textContent = "收起";
-  } catch (e){ log(e.message, "error"); toast(e.message); }
-};
-$("btnCatchup").onclick = async () => {
-  try {
-    const r = await api("/api/collect/schedule/catchup", {method:"POST"});
-    log(r.message, "done"); toast(r.message);
-    setTimeout(loadSyncHistory, 1500);
-  } catch (e){ log(e.message, "error"); toast(e.message); }
+    box.innerHTML = out.join("");
+  } catch (e){ box.innerHTML = `<p class="note" style="color:var(--stop)">${esc(e.message)}</p>`; }
 };
 
-/* ---------------------------------------------------------------- 数据同步 */
-let syncMeta = {};
+async function loadSchedStatus(){
+  try {
+    const d = await api("/api/sync/status");
+    $("schedDot").className = "dot " + (d.scheduler_alive ? "ok" : "stop");
+    $("schedText").textContent = d.scheduler_alive
+      ? `下次采集 ${(d.next_collect_daily || "—").slice(5)}` : "调度未启动";
+    $("syNext").textContent = `下次运行：日 ${d.next_daily || "未启用"} · 月 ${d.next_monthly || "未启用"}`;
+    const lg = d.logs || [];
+    $("schedLogs").innerHTML = lg.length ? lg.slice(0, 60).map(l =>
+      `<div><span class="t">${esc(l.at)}</span><span class="${l.level === "error" ? "error" : l.level === "warn" ? "warn" : ""}">${esc(l.message)}</span></div>`
+    ).join("") : '<div class="t">暂无</div>';
+    const h = d.history || [];
+    $("syHistory").innerHTML = h.length ? h.map(x => {
+      const parts = Object.values(x.tables || {}).map(t =>
+        `${esc(t.remote_table || t.table)} ${t.rows} 行${t.ok ? "" : ` <span style="color:var(--stop)">✗ ${esc(t.error)}</span>`}`);
+      const why = {schedule:"定时", after_collect:"采集后", manual:"手动"}[x.reason] || x.reason || "";
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--edge)">
+        <div><span class="mono muted">${esc(x.started_at.slice(5, 16))}</span>
+          <span class="tag ${x.ok ? "ok" : "bad"}" style="margin-left:6px">${x.dry_run ? "试运行" : (x.ok ? "成功" : "有失败")}</span>
+          <span class="muted" style="margin-left:6px">${esc(why)} · ${esc(x.job)}</span></div>
+        <div class="muted" style="margin-top:2px">${parts.join("<br>") || "无数据"}</div></div>`;
+    }).join("") : "暂无记录";
+  } catch (e){ /* 状态查询失败不打扰 */ }
+}
+
+/* ================================================================ 远程同步 */
 async function loadSync(){
   const d = await api("/api/sync/config");
   syncMeta = d;
@@ -1405,52 +1591,127 @@ async function loadSync(){
   $("syMonthly").checked = !!sc.monthly_enabled;
   $("syMonthDay").value = sc.monthly_day || 5;
   $("syMonthAt").value = sc.monthly_at || "04:00";
-  $("syNext").textContent =
-    `下次运行：日 ${d.next_daily || "未启用"} · 月 ${d.next_monthly || "未启用"}`;
   const on = d.enabled && d.key_set && d.url;
-  $("syncState").textContent = on ? "已启用，按定时推送到下游" : "未启用，不会推送任何数据";
-  $("syncState").style.color = on ? "var(--ok)" : "var(--muted)";
+  $("syncTag").textContent = on ? "推送已启用" : "推送未启用";
+  $("syncTag").className = "tag " + (on ? "ok" : "warn");
+  renderSyncTables();
+}
 
-  const box = $("syTables"); box.innerHTML = "";
+function renderSyncTables(){
+  const d = syncMeta, box = $("syTables");
+  box.innerHTML = "";
   for (const [key, meta] of Object.entries(d.tables_meta || {})){
     const t = (d.tables || {})[key] || {};
-    const wrap = document.createElement("div");
-    wrap.className = "card";
-    wrap.innerHTML = `
-      <div class="card-hd"><b>${meta.name}</b>
-        <span class="tag">${meta.period === "daily" ? "日" : "月"}</span></div>
-      <p class="note" style="margin:0 0 6px">${meta.comment}</p>
-      <label class="check"><input type="checkbox" data-sy="on" data-key="${key}"
-        ${t.enabled !== false ? "checked" : ""}> 参与同步</label>
-      <div class="field"><label>tableName</label>
-        <input data-sy="rt" data-key="${key}" placeholder="${meta.name}"
-               value="${t.remote_table || ""}"></div>
-      <div class="field"><label>pkId</label>
-        <input data-sy="pk" data-key="${key}" value="${(t.pk || d.default_pk[key] || []).join(",")}"></div>
-      <div class="field"><label>回溯</label>
-        <input class="num" data-sy="lb" data-key="${key}" type="number" min="1" max="120"
-               value="${t.lookback || (meta.period === "daily" ? 7 : 2)}">
-        <span class="unit">${meta.period === "daily" ? "天" : "个月"}
-          · 按 ${meta.time_column}${meta.period === "daily" ? "，到昨天为止" : "，从上个月往前算"}</span></div>`;
-    box.appendChild(wrap);
+    const cols = meta.columns || [];
+    const chosen = new Set((t.fields && t.fields.length) ? t.fields : cols.map(c => c.name));
+    const aliases = t.aliases || {};
+    const pk = new Set(t.pk && t.pk.length ? t.pk : (d.default_pk[key] || []));
+    const daily = meta.period === "daily";
+    const card = document.createElement("div");
+    card.className = "card tcard"; card.dataset.key = key;
+    card.innerHTML = `
+      <div class="card-hd">
+        <label class="check" style="margin:0"><input type="checkbox" data-f="on" ${t.enabled !== false ? "checked" : ""}></label>
+        <h2 class="mono">${esc(meta.name)}</h2>
+        <span class="tag info">${daily ? "日表" : "月表"}</span>
+        <small>${esc(meta.comment)}</small>
+        <div class="acts"><small data-f="count"></small></div>
+      </div>
+      <div class="card-bd">
+        <div class="field"><label>下游表名</label>
+          <input data-f="rt" placeholder="${esc(meta.name)}（留空用本地表名）" value="${esc(t.remote_table || "")}"></div>
+        <div class="field"><label>回溯</label>
+          <input class="num" data-f="lb" type="number" min="1" max="120" value="${t.lookback || (daily ? 7 : 2)}">
+          <span class="unit">${daily ? "天，按 transaction_date，到昨天为止" : "个月，按 evaluation_month，从上个月往前算"}（定时补推用）</span></div>
+        <div class="field" style="align-items:flex-start"><label style="padding-top:3px">pkId</label>
+          <div style="flex:1">
+            <div class="chips" data-f="pk">${cols.map(c =>
+              `<button type="button" class="chip" data-col="${esc(c.name)}" aria-pressed="${pk.has(c.name)}">${esc(c.name)}</button>`).join("")}</div>
+            <p class="note">下游按这几个字段判断新增还是更新，点选切换。按本地字段选，字段改了下游名时推送会自动用下游名。
+              本地唯一键：<span class="mono">${esc((meta.unique_key || []).join(", "))}</span></p>
+          </div></div>
+        <details class="more" ${t.fields && t.fields.length ? "open" : ""}>
+          <summary>推送字段与下游字段名</summary>
+          <div class="btn-row" style="margin-bottom:8px">
+            <button class="btn btn--sm" data-f="all">全选</button>
+            <button class="btn btn--sm" data-f="none">全不选</button>
+            <button class="btn btn--sm" data-f="nometa">去掉审计字段</button>
+          </div>
+          <div class="tbl-wrap"><table class="tbl ftbl">
+            <thead><tr><th style="width:34px"></th><th>本地字段</th><th>类型</th><th>说明</th><th style="width:220px">下游字段名</th></tr></thead>
+            <tbody>${cols.map(c => `
+              <tr data-col="${esc(c.name)}" class="${chosen.has(c.name) ? "" : "off"}">
+                <td><input type="checkbox" data-f="col" ${chosen.has(c.name) ? "checked" : ""} style="accent-color:var(--signal)"></td>
+                <td class="mono">${esc(c.name)}</td>
+                <td class="mono muted">${esc(c.type)}</td>
+                <td class="muted">${esc(c.comment)}</td>
+                <td><input class="inp" data-f="alias" placeholder="${esc(c.name)}" value="${esc(aliases[c.name] || "")}"></td>
+              </tr>`).join("")}</tbody>
+          </table></div>
+        </details>
+      </div>`;
+    box.appendChild(card);
+    updateCount(card);
   }
 }
+function updateCount(card){
+  const all = card.querySelectorAll('[data-f="col"]'), on = card.querySelectorAll('[data-f="col"]:checked');
+  const pk = [...card.querySelectorAll('[data-f="pk"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
+  const chosen = new Set([...on].map(i => i.closest("tr").dataset.col));
+  const miss = pk.filter(p => !chosen.has(p));
+  const c = card.querySelector('[data-f="count"]');
+  c.innerHTML = `推送 ${on.length}/${all.length} 个字段` +
+    (miss.length ? ` · <span style="color:var(--stop)">主键 ${esc(miss.join(", "))} 未勾选</span>` : "");
+}
+const AUDIT = /^(create_time|update_time|created_at|updated_at|collect_time)$/;
+$("syTables").addEventListener("click", (e) => {
+  const card = e.target.closest(".tcard"); if (!card) return;
+  const chip = e.target.closest(".chip");
+  if (chip){ chip.setAttribute("aria-pressed", String(chip.getAttribute("aria-pressed") !== "true")); updateCount(card); return; }
+  const f = e.target.dataset && e.target.dataset.f;
+  if (f === "all" || f === "none" || f === "nometa"){
+    card.querySelectorAll('[data-f="col"]').forEach(i => {
+      const col = i.closest("tr").dataset.col;
+      i.checked = f === "all" ? true : f === "none" ? false : !AUDIT.test(col) && i.checked;
+      i.closest("tr").classList.toggle("off", !i.checked);
+    });
+    updateCount(card);
+  }
+});
+$("syTables").addEventListener("change", (e) => {
+  if (e.target.dataset.f !== "col") return;
+  e.target.closest("tr").classList.toggle("off", !e.target.checked);
+  updateCount(e.target.closest(".tcard"));
+});
 
 function collectSyncPatch(){
   const tables = {};
-  document.querySelectorAll('[data-sy="on"]').forEach(el => {
-    tables[el.dataset.key] = {enabled: el.checked};
+  let err = "";
+  document.querySelectorAll("#syTables .tcard").forEach(card => {
+    const key = card.dataset.key;
+    const all = [...card.querySelectorAll('[data-f="col"]')];
+    const on = all.filter(i => i.checked).map(i => i.closest("tr").dataset.col);
+    const aliases = {};
+    card.querySelectorAll('[data-f="alias"]').forEach(i => {
+      const v = i.value.trim(), col = i.closest("tr").dataset.col;
+      if (v && v !== col) aliases[col] = v;
+    });
+    const pk = [...card.querySelectorAll('[data-f="pk"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
+    const enabled = card.querySelector('[data-f="on"]').checked;
+    if (enabled && !on.length) err = err || `${key}：至少勾选一个字段`;
+    if (enabled && !pk.length) err = err || `${key}：pkId 至少选一个`;
+    const miss = pk.filter(p => !on.includes(p));
+    if (enabled && miss.length) err = err || `${key}：主键 ${miss.join(", ")} 没有勾选推送`;
+    tables[key] = {
+      enabled,
+      remote_table: card.querySelector('[data-f="rt"]').value.trim(),
+      lookback: parseInt(card.querySelector('[data-f="lb"]').value, 10) || 1,
+      pk,
+      fields: on.length === all.length ? [] : on,     // 全选存空 = 以后新增的字段也自动带上
+      aliases,
+    };
   });
-  document.querySelectorAll('[data-sy="rt"]').forEach(el => {
-    tables[el.dataset.key].remote_table = el.value.trim();
-  });
-  document.querySelectorAll('[data-sy="pk"]').forEach(el => {
-    tables[el.dataset.key].pk = el.value.split(",").map(x => x.trim()).filter(Boolean);
-  });
-  document.querySelectorAll('[data-sy="lb"]').forEach(el => {
-    tables[el.dataset.key].lookback = parseInt(el.value, 10) || 1;
-  });
-  return {
+  return {err, patch: {
     enabled: $("syEnabled").value === "1",
     url: $("syUrl").value.trim(),
     header_name: $("syHeader").value.trim() || "xpftkey",
@@ -1464,100 +1725,103 @@ function collectSyncPatch(){
       monthly_day: parseInt($("syMonthDay").value, 10) || 5,
       monthly_at: $("syMonthAt").value,
     },
-  };
+  }};
 }
-
-$("btnSyncSave").onclick = async () => {
+async function saveSync(quiet){
+  const {err, patch} = collectSyncPatch();
+  if (err){ toast(err); return false; }
   try {
-    const r = await api("/api/sync/config",
-                        {method:"POST", body:JSON.stringify(collectSyncPatch())});
-    toast("同步配置已保存");
-    log(`同步配置已保存，下次运行：日 ${r.next_daily || "未启用"} · 月 ${r.next_monthly || "未启用"}`, "done");
-    loadSync();
-  } catch (e){ log(e.message, "error"); toast(e.message); }
-};
+    const r = await post("/api/sync/config", patch);
+    if (!quiet) toast(`同步配置已保存，下次补推：日 ${r.next_daily || "未启用"} · 月 ${r.next_monthly || "未启用"}`);
+    await loadSync();
+    return true;
+  } catch (e){ toast(e.message); return false; }
+}
+$("btnSyncSave").onclick = () => saveSync(false);
 
 async function runSync(job, dry){
-  const label = dry ? "试运行" : (job === "daily" ? "日数据同步" : "月数据同步");
-  log(`${label} 开始…`);
+  // 先存再跑：页面上刚改的字段配置要生效
+  if (!(await saveSync(true))) return;
+  const label = dry ? "试运行" : (job === "daily" ? "推送日表" : "推送月表");
+  const btns = ["btnSyncDry","btnSyncDay","btnSyncMonth"].map($);
+  btns.forEach(b => b.disabled = true);
+  toast(`${label} 进行中…`);
   try {
-    const r = await api("/api/sync/run",
-                        {method:"POST", body:JSON.stringify({job, dry_run:dry})});
-    for (const [k, t] of Object.entries(r.tables || {})){
-      log(`  ${t.table}：窗口 ${t.window || "—"}，取 ${t.rows} 行`
-          + (dry ? `（将分 ${t.batches} 批）`
-                 : `，${t.batches} 批，新增 ${t.inserted}，更新 ${t.updated}`)
-          + (t.ok ? "" : ` ✗ ${t.error}`), t.ok ? "info" : "error");
-    }
-    log(`${label} ${r.ok ? "完成" : "有失败"}，耗时 ${r.elapsed}s`, r.ok ? "done" : "error");
-    toast(`${label}${r.ok ? "完成" : "有失败，看日志"}`);
-    loadSyncHistory();
-  } catch (e){ log(e.message, "error"); toast(e.message); }
+    const r = await post("/api/sync/run", {job, dry_run: dry});
+    showSyncResult(label, r);
+    loadSchedStatus();
+  } catch (e){ toast(e.message); }
+  btns.forEach(b => b.disabled = false);
 }
-$("btnSyncDry").onclick = () => runSync("daily", true);
+function showSyncResult(label, r){
+  $("dryTitle").textContent = `${label} · ${r.ok ? "完成" : "有失败"} · 耗时 ${r.elapsed}s`;
+  $("dryBody").innerHTML = Object.values(r.tables || {}).map(t => `
+    <div class="card" style="margin-bottom:12px"><div class="card-hd">
+      <h2 class="mono">${esc(t.table)} → ${esc(t.remote_table)}</h2>
+      <span class="tag ${t.ok ? "ok" : "bad"}">${t.ok ? "OK" : "失败"}</span></div>
+      <div class="card-bd">
+        <div class="kv"><span>时间窗口</span><b>${esc(t.window || "—")}</b></div>
+        <div class="kv"><span>行数</span><b>${t.rows} 行 · ${t.fields ?? "—"} 个字段 · ${t.batches} 批</b></div>
+        <div class="kv"><span>pkId</span><b>${esc((t.pk || []).join(", "))}</b></div>
+        ${r.dry_run ? "" : `<div class="kv"><span>结果</span><b>新增 ${t.inserted}，更新 ${t.updated}</b></div>`}
+        ${t.error ? `<div class="kv"><span>错误</span><b style="color:var(--stop)">${esc(t.error)}</b></div>` : ""}
+        ${t.sample ? `<div class="note">报文示例（前 2 行）：</div><pre class="json">${esc(JSON.stringify(t.sample, null, 2))}</pre>` : ""}
+      </div></div>`).join("") || '<p class="note">没有参与同步的表</p>';
+  openModal("mDry");
+}
+$("btnSyncDry").onclick = () => runSync("all", true);
 $("btnSyncDay").onclick = () => runSync("daily", false);
 $("btnSyncMonth").onclick = () => runSync("monthly", false);
 
-async function loadSyncHistory(){
-  try {
-    const d = await api("/api/sync/status");
-    $("syNext").textContent =
-      `下次运行：日 ${d.next_daily || "未启用"} · 月 ${d.next_monthly || "未启用"}`
-      + (d.scheduler_alive ? "" : "（调度未启动）");
-    if ($("csNext")) $("csNext").textContent =
-      `下次运行：日 ${d.next_collect_daily || "未启用"} · 月 ${d.next_collect_monthly || "未启用"}`;
-    const esc = t => String(t ?? "").replace(/[&<>"]/g, c =>
-      ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-    const SRC = {manual:"手动", schedule:"定时", catchup:"补采", login:"首采"};
-    const cs = d.collect_history || [];
-    $("csHistory").innerHTML = cs.length ? cs.map(h => {
-      const cls = h.status === "完成" ? "ok" : (h.status === "部分完成" || h.status === "跳过") ? "warn" : "bad";
-      return `<div class="kv"><span>${esc(h.at)}</span>
-              <b>${esc(h.account_id)} · ${esc(SRC[h.source] || h.source)} · ${esc(h.label)}
-              <span class="tag ${cls}" style="margin-left:6px">${esc(h.status)}</span>
-              ${h.detail ? `<br><small style="color:var(--muted)">${esc(h.detail)}</small>` : ""}</b></div>`;
-    }).join("") : "暂无记录（控制台重启后清空）";
-    const lg = d.logs || [];
-    $("schedLogs").innerHTML = lg.length ? lg.slice(0, 40).map(l =>
-      `<div class="kv"><span>${esc(l.at)}</span><b style="color:${
-        l.level === "error" ? "var(--stop)" : l.level === "warn" ? "var(--signal)" : "inherit"}">${esc(l.message)}</b></div>`
-    ).join("") : "暂无";
-    const box = $("syHistory");
-    if (!d.history.length){ box.textContent = "暂无记录"; return; }
-    box.innerHTML = d.history.map(h => {
-      const parts = Object.values(h.tables || {}).map(t =>
-        `${t.table.replace("ads_sup_ota_ctrip_", "")} ${t.rows}行${t.ok ? "" : "✗"}`);
-      return `<div class="kv"><span>${h.started_at.slice(5, 16)}</span>
-              <b>${h.job}${h.dry_run ? "(试)" : ""} · ${h.ok ? "成功" : "有失败"}
-              · ${parts.join(" / ") || "无数据"}</b></div>`;
-    }).join("");
-  } catch (e){ /* 状态查询失败不打扰 */ }
+/* ================================================================ 通知设置 */
+async function loadSettings(){
+  const d = await api("/api/settings"), f = d.feishu || {};
+  $("fsEnabled").value = f.enabled ? "1" : "0";
+  $("fsWebhook").value = f.webhook || "";
+  $("fsSecret").value = f.secret || "";
+  $("fsToken").value = f.verify_token || "";
+  $("fsEncKey").value = f.encrypt_key || "";
+  $("fsConsole").value = f.console_url || "";
+  $("fsPlatform").value = f.platform || "";
+  $("cbUrl").textContent = location.origin + d.callback_url;
+  const on = f.enabled && f.webhook_set;
+  $("fsTag").textContent = on ? "已开启" : "未启用";
+  $("fsTag").className = "tag " + (on ? "ok" : "");
 }
-
-/* ---------------------------------------------------------------- 日志 */
-$("btnFoldLog").onclick = () => {
-  const min = $("logs").classList.toggle("min");
-  $("btnFoldLog").textContent = min ? "展开" : "收起";
+$("btnNotify").onclick = () => { loadSettings(); openModal("mNotify"); };
+$("btnCfgSave").onclick = async () => {
+  try {
+    await post("/api/settings", {feishu:{
+      enabled: $("fsEnabled").value === "1",
+      webhook: $("fsWebhook").value.trim(), secret: $("fsSecret").value.trim(),
+      verify_token: $("fsToken").value.trim(), encrypt_key: $("fsEncKey").value.trim(),
+      console_url: $("fsConsole").value.trim(),
+      platform: $("fsPlatform").value.trim() || "携程 VBooking",
+    }});
+    toast("通知设置已保存"); loadSettings();
+  } catch (e){ toast(e.message); }
 };
-$("btnClearLog").onclick = () => $("logBody").innerHTML = "";
+$("btnCfgTest").onclick = async () => {
+  const id = current || (accounts[0] && accounts[0].account_id) || "";
+  try {
+    const r = await post(`/api/settings/feishu/test?account_id=${encodeURIComponent(id)}`);
+    toast(r.ok ? "测试通知已发出，去飞书群里看" : `测试失败：${r.detail}`);
+  } catch (e){ toast(e.message); }
+};
 
-setInterval(() => {
-  if (!browserLive){ $("fpsBar").textContent = "—"; frames = painted = 0; return; }
-  $("fpsBar").textContent = streamMode === "vnc"
-    ? (vncReady ? "增量流" : "连接中")
-    : `${painted} fps`;
-  if (frames > 0 && painted === 0) log("收到画面但未能绘制，试试刷新页面", "warn");
-  frames = painted = 0;
-}, 1000);
-setInterval(loadAccounts, 15000);
+/* ================================================================ 启动 */
+setInterval(() => { if (!document.hidden) loadAccounts().catch(() => {}); }, 15000);
+setInterval(() => { if (!document.hidden) { loadRuns(); loadSchedStatus(); } }, 5000);
 
-setInterval(loadSyncHistory, 20000);
-loadAccounts().then(loadSettings).then(loadSync).then(loadCollectSchedule)
-  .then(loadSyncHistory).then(() => {
-  log("控制台已就绪");
+loadAccounts().then(() => {
+  loadRuns(); loadSchedStatus();
+  let page = "accounts";
+  try { page = localStorage.getItem("console.page") || "accounts"; } catch(e){}
+  // 飞书通知里的链接：?account=xxx 直接打开该账号的浏览器
   const want = new URLSearchParams(location.search).get("account");
-  if (want && accounts.some(a => a.account_id === want)) selectAccount(want);
-});
+  if (want && accounts.some(a => a.account_id === want)){ showPage("accounts"); openBrowser(want); }
+  else showPage(["accounts","tasks","sync"].includes(page) ? page : "accounts");
+}).catch(e => toast("加载失败：" + e.message));
 })();
 </script>
 </body>

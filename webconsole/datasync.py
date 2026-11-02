@@ -60,6 +60,21 @@ class TableSync:
     remote_table: str = ""     # 下游的 tableName，留空则用本地表名
     pk: list[str] = field(default_factory=list)
     lookback: int = 7          # 日表回溯天数 / 月表回溯月数
+    # 推哪些字段。空 = 全部字段（除本地自增 id）。按本地列名填。
+    fields: list[str] = field(default_factory=list)
+    # 本地列名 → 下游字段名。只填需要改名的；pkId 也按改名后的推。
+    aliases: dict = field(default_factory=dict)
+
+    def columns(self, table_key: str) -> list[str]:
+        """实际推送的本地列，按表结构顺序；未知列名忽略。"""
+        known = [f.name for f in TABLES[table_key].fields]
+        if not self.fields:
+            return known
+        wanted = set(self.fields)
+        return [c for c in known if c in wanted]
+
+    def remote_name(self, column: str) -> str:
+        return (self.aliases or {}).get(column) or column
 
 
 @dataclass
@@ -96,6 +111,10 @@ class SyncConfig:
                 remote_table=(t.get("remote_table") or "").strip(),
                 pk=list(t.get("pk") or DEFAULT_PK.get(key, [])),
                 lookback=int(t.get("lookback") or (7 if key in DAILY_TABLES else 2)),
+                fields=[str(x) for x in (t.get("fields") or []) if str(x).strip()],
+                aliases={str(k): str(v).strip()
+                         for k, v in (t.get("aliases") or {}).items()
+                         if str(v).strip() and str(v).strip() != str(k)},
             )
         sc = raw.get("schedule") or {}
         return cls(
@@ -241,7 +260,8 @@ def month_coverage(cfg, month: str, account_ids: list[str],
 def fetch_rows(cfg, table_key: str, lookback: int,
                account_ids: list[str] | None = None,
                limit: int | None = None,
-               window: tuple[str, str] | None = None) -> tuple[list[dict], str, str]:
+               window: tuple[str, str] | None = None,
+               columns: list[str] | None = None) -> tuple[list[dict], str, str]:
     """从 MySQL 读一张表的窗口数据。返回 (行, 窗口下界, 窗口上界)。
 
     window 显式给定时用它 —— 采集完立刻推的场景要按那一次采集的区间推，
@@ -256,7 +276,8 @@ def fetch_rows(cfg, table_key: str, lookback: int,
     if account_ids:
         where.append("`account_id` IN (" + ",".join(["%s"] * len(account_ids)) + ")")
         args.extend(account_ids)
-    sql = f"SELECT * FROM `{_physical_table(cfg, table_key)}` WHERE {' AND '.join(where)} ORDER BY `{col}`"
+    select = ",".join(f"`{c}`" for c in columns) if columns else "*"
+    sql = f"SELECT {select} FROM `{_physical_table(cfg, table_key)}` WHERE {' AND '.join(where)} ORDER BY `{col}`"
     if limit:
         sql += f" LIMIT {int(limit)}"
 
@@ -363,15 +384,26 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
             if ts is None or not ts.enabled:
                 continue
             schema = TABLES[key]
-            pk = ts.pk or DEFAULT_PK.get(key) or schema.unique_key
+            local_pk = ts.pk or DEFAULT_PK.get(key) or schema.unique_key
+            columns = ts.columns(key)
+            # pkId 按本地列名配置，推送时跟着字段改名走
+            pk = [ts.remote_name(c) for c in local_pk]
             # 下游表名可与本地表名不同（对方库里叫什么由对方定），留空才用本地表名
             remote = ts.remote_table or schema.name
             item = {"table": schema.name, "remote_table": remote,
-                    "pk": pk, "rows": 0, "batches": 0,
+                    "pk": pk, "fields": len(columns), "rows": 0, "batches": 0,
                     "inserted": 0, "updated": 0, "ok": True, "error": ""}
             try:
+                # 先算窗口：取数失败时页面上也能看到这次本来要推哪一段
+                low, high = window or window_for(key, ts.lookback, today_of(cfg))
+                item["window"] = f"{low} ~ {high}"
+                missing = [c for c in local_pk if c not in columns]
+                if missing:
+                    raise SyncError(f"主键字段 {', '.join(missing)} 没有勾选推送")
                 rows, low, high = fetch_rows(cfg, key, ts.lookback, account_ids,
-                                             window=window)
+                                             window=(low, high), columns=columns)
+                if ts.aliases:
+                    rows = [{ts.remote_name(k): v for k, v in r.items()} for r in rows]
                 item.update(rows=len(rows), window=f"{low} ~ {high}")
                 emit(f"[{schema.name} → {remote}] 窗口 {low} ~ {high}，"
                      f"取到 {len(rows)} 行")
@@ -380,6 +412,8 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
                     continue
                 if dry_run:
                     item["batches"] = (len(rows) + sc.batch_size - 1) // sc.batch_size
+                    # 给页面看实际报文长什么样
+                    item["sample"] = {"tableName": remote, "pkId": pk, "data": rows[:2]}
                     emit(f"[{schema.name}] 试运行，不实际推送"
                          f"（将分 {item['batches']} 批）")
                     result["tables"][key] = item

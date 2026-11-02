@@ -52,6 +52,8 @@ PROJECT_ROOT = BASE_DIR.parent
 async def lifespan(_app: FastAPI):
     """启动/关闭钩子。用 lifespan 而不是 on_event —— 后者已被 FastAPI 弃用。"""
     global _scheduler
+    if not _past:
+        _load_past()
     if _scheduler is None:
         _scheduler = _build_scheduler()
         _scheduler.start()
@@ -129,24 +131,96 @@ def rc_text(rc: int | None) -> str:
 
 _EMPTY_JOB_RE = re.compile(r"任务 (\w+) 未采集到数据")
 
-# 最近的采集记录（手动 + 定时），页面「最近运行」里展示
-_collect_history: deque = deque(maxlen=50)
+# =============================================================================
+# 运行记录：每次采集一条，日志落盘，控制台重启后历史仍在
+# =============================================================================
+
+RUNS_DIR = PROJECT_ROOT / "logs" / "console_runs"
+RUNS_INDEX = RUNS_DIR / "index.jsonl"
+SOURCE_TEXT = {"manual": "手动", "schedule": "定时", "catchup": "补采", "login": "首采"}
+STATUS_TEXT = {"queued": "排队中", "running": "运行中", "success": "完成",
+               "partial": "部分完成", "failed": "失败", "stopped": "已停止",
+               "skipped": "跳过"}
+
+_runs: "dict[str, CollectTask]" = {}       # 本进程发起的（含进行中），按插入顺序
+_past: list[dict] = []                     # 启动时从 index.jsonl 读回的历史摘要
+_runs_lock = threading.Lock()
 
 
-def _record_collect(account_id: str, label: str, source: str, status: str,
-                    detail: str = "") -> None:
-    _collect_history.appendleft({
-        "at": datetime.now().strftime("%m-%d %H:%M"),
-        "account_id": account_id, "label": label, "source": source,
-        "status": status, "detail": detail,
-    })
+def _new_run_id(account_id: str) -> str:
+    import secrets
+    return f"{datetime.now():%Y%m%d-%H%M%S}-{account_id}-{secrets.token_hex(2)}"
+
+
+def _append_index(summary: dict) -> None:
+    try:
+        RUNS_DIR.mkdir(parents=True, exist_ok=True)
+        with RUNS_INDEX.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(summary, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        print(f"[runs] 写运行记录失败：{exc}")
+
+
+def _load_past(limit: int = 300) -> None:
+    """启动时读回最近的运行摘要。文件只追加，读尾部即可。"""
+    try:
+        lines = RUNS_INDEX.read_text(encoding="utf-8").splitlines()[-limit:]
+    except OSError:
+        return
+    for ln in lines:
+        try:
+            _past.append(json.loads(ln))
+        except json.JSONDecodeError:
+            continue
+
+
+def _record_collect(account_id: str, label: str, source: str, reason: str) -> None:
+    """记一条「没跑」的记录（登录态失效、已有任务在跑、发起失败）。"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    summary = {"run_id": _new_run_id(account_id), "account_id": account_id,
+               "label": label, "source": source, "status": "skipped",
+               "status_text": STATUS_TEXT["skipped"], "detail": reason, "rc": None,
+               "created_at": now, "started_at": "", "finished_at": now,
+               "duration": 0, "lines": 0, "has_log": False}
+    with _runs_lock:
+        _past.append(summary)
+        del _past[:-300]
+    _append_index(summary)
+
+
+def list_runs(limit: int = 100, account_id: str = "") -> list[dict]:
+    with _runs_lock:
+        live = [t.summary() for t in _runs.values()]
+        seen = {r["run_id"] for r in live}
+        rows = live + [r for r in _past if r["run_id"] not in seen]
+    if account_id:
+        rows = [r for r in rows if r["account_id"] == account_id]
+    rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return rows[:limit]
+
+
+def _register(task: "CollectTask") -> None:
+    with _runs_lock:
+        _runs[task.run_id] = task
+        # 只保留最近 200 个在内存里；更早的已落盘，查日志走文件
+        finished = [k for k, t in _runs.items() if t.finished]
+        for k in finished[:max(0, len(_runs) - 200)]:
+            _past.append(_runs.pop(k).summary())
 
 
 class CollectTask:
-    """一次采集任务。用子进程而非直接 import，避免与控制台共享日志/事件循环。"""
+    """一次采集任务。用子进程而非直接 import，避免与控制台共享日志/事件循环。
+
+    生命周期：queued（建好未启动，批量任务里排队）→ running → 结束。
+    日志同时写内存和 ``logs/console_runs/<run_id>.log``，结束时把摘要追加到
+    ``index.jsonl`` —— 页面上的运行列表和日志弹窗在控制台重启后依然能看。
+    """
+
+    MAX_LINES = 20000
 
     def __init__(self, account_id: str, label: str, argv: list[str],
                  on_done=None, source: str = "manual") -> None:
+        self.run_id = _new_run_id(account_id)
         self.account_id = account_id
         self.label = label
         self.argv = argv
@@ -155,21 +229,92 @@ class CollectTask:
         self.empty_jobs: list[str] = []  # 跑了但上游没数据的任务（如 rating 还没出）
         self.job = "day"
         self.sync_window: tuple[str, str] | None = None
-        self.lines: deque[str] = deque(maxlen=500)
-        self.queue: queue.Queue[dict] = queue.Queue()
+        self.entries: list[dict] = []
+        # 浏览器画面通道会顺带转发采集日志；没人连时丢弃，不无限堆积
+        self.queue: queue.Queue[dict] = queue.Queue(maxsize=2000)
         self.proc: subprocess.Popen | None = None
         self.rc: int | None = None
-        self.started_at = datetime.now()
+        self.stopped = False
+        self.skip_reason = ""
+        self.created_at = datetime.now()
+        self.started_at: datetime | None = None
+        self.finished_at: datetime | None = None
+        self.done = threading.Event()
+        self._log_fh = None
         self._thread = threading.Thread(target=self._run, daemon=True)
 
+    # ------------------------------------------------------------ 状态
     @property
     def running(self) -> bool:
-        return self.proc is not None and self.rc is None
+        return self.started_at is not None and not self.done.is_set()
 
+    @property
+    def finished(self) -> bool:
+        return self.done.is_set()
+
+    @property
+    def status(self) -> str:
+        if self.skip_reason:
+            return "skipped"
+        if self.started_at is None:
+            return "queued"
+        if not self.done.is_set():
+            return "running"
+        if self.stopped:
+            return "stopped"
+        return {0: "success", 1: "partial"}.get(self.rc, "failed")
+
+    def summary(self) -> dict:
+        end = self.finished_at or (datetime.now() if self.started_at else None)
+        fmt = "%Y-%m-%d %H:%M:%S"
+        return {
+            "run_id": self.run_id, "account_id": self.account_id,
+            "label": self.label, "source": self.source,
+            "status": self.status, "status_text": STATUS_TEXT[self.status],
+            "detail": self.skip_reason or self.empty_detail().strip("（）"),
+            "rc": self.rc,
+            "created_at": self.created_at.strftime(fmt),
+            "started_at": self.started_at.strftime(fmt) if self.started_at else "",
+            "finished_at": self.finished_at.strftime(fmt) if self.finished_at else "",
+            "duration": (round((end - self.started_at).total_seconds())
+                         if self.started_at and end else 0),
+            "lines": len(self.entries), "has_log": self.started_at is not None,
+        }
+
+    # ------------------------------------------------------------ 运行
     def start(self) -> None:
+        self.started_at = datetime.now()
         self._thread.start()
 
+    def skip(self, reason: str) -> None:
+        """排队中的任务轮到时发现不能跑（如同账号已有任务）。"""
+        self.skip_reason = reason
+        self.finished_at = datetime.now()
+        self.done.set()
+        _append_index(self.summary())
+
+    def _open_log(self) -> None:
+        try:
+            RUNS_DIR.mkdir(parents=True, exist_ok=True)
+            self._log_fh = (RUNS_DIR / f"{self.run_id}.log").open(
+                "a", encoding="utf-8", buffering=1)
+        except OSError as exc:
+            print(f"[runs] 打开日志文件失败：{exc}")
+
     def _run(self) -> None:
+        self._open_log()
+        try:
+            self._run_proc()
+        finally:
+            self.finished_at = datetime.now()
+            self.done.set()
+            _append_index(self.summary())
+            if self._log_fh:
+                with contextlib.suppress(OSError):
+                    self._log_fh.close()
+                self._log_fh = None
+
+    def _run_proc(self) -> None:
         env = dict(os.environ)
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
@@ -197,11 +342,9 @@ class CollectTask:
                     "warn" if (" WARNING " in line or "⚠" in line) else "info")
                 self._push(level, line)
         self.rc = self.proc.wait()
-        detail = self.empty_detail()
-        self._push("done", f"{self.label} {rc_text(self.rc)}{detail}", rc=self.rc)
-        _record_collect(self.account_id, self.label, self.source,
-                        rc_text(self.rc), detail.strip("（）"))
-        if self.on_done:
+        text = "已停止" if self.stopped else rc_text(self.rc)
+        self._push("done", f"{self.label} {text}{self.empty_detail()}", rc=self.rc)
+        if self.on_done and not self.stopped:
             # 采集完成的后续动作（推 API）单独兜异常：
             # 推送失败不该让这次采集看起来像失败了，数据已经在本地库里
             try:
@@ -210,11 +353,16 @@ class CollectTask:
                 self._push("warn", f"采集后置动作异常：{exc}")
 
     def _push(self, level: str, message: str, **extra) -> None:
+        at = datetime.now().strftime("%H:%M:%S")
+        if len(self.entries) < self.MAX_LINES:
+            self.entries.append({"at": at, "level": level, "message": message})
+        if self._log_fh:
+            with contextlib.suppress(OSError):
+                self._log_fh.write(f"{at}\t{level}\t{message}\n")
         item = {"type": "task", "level": level, "message": message,
-                "label": self.label,
-                "at": datetime.now().strftime("%H:%M:%S"), **extra}
-        self.lines.append(message)
-        self.queue.put(item)
+                "label": self.label, "run_id": self.run_id, "at": at, **extra}
+        with contextlib.suppress(queue.Full):
+            self.queue.put_nowait(item)
 
     def empty_detail(self) -> str:
         if not self.empty_jobs:
@@ -226,8 +374,63 @@ class CollectTask:
 
     def stop(self) -> None:
         if self.proc and self.rc is None:
+            self.stopped = True
             self.proc.terminate()
             self._push("warn", "已请求终止任务")
+
+
+def read_run_log(run_id: str, after: int = 0) -> tuple[dict | None, list[dict]]:
+    """取一次运行的日志（从第 after 行起）。内存里有就用内存，否则读落盘文件。"""
+    with _runs_lock:
+        task = _runs.get(run_id)
+        summary = task.summary() if task else next(
+            (r for r in _past if r["run_id"] == run_id), None)
+    if task is not None:
+        return summary, task.entries[after:]
+    if summary is None or not re.fullmatch(r"[\w.-]+", run_id):
+        return None, []
+    lines: list[dict] = []
+    try:
+        with (RUNS_DIR / f"{run_id}.log").open(encoding="utf-8") as fh:
+            for i, ln in enumerate(fh):
+                if i < after:
+                    continue
+                parts = ln.rstrip("\n").split("\t", 2)
+                if len(parts) == 3:
+                    lines.append({"at": parts[0], "level": parts[1], "message": parts[2]})
+                else:
+                    lines.append({"at": "", "level": "info", "message": ln.rstrip("\n")})
+    except OSError:
+        pass
+    return summary, lines
+
+
+def launch_collect(account_id: str, mode: str, params: dict, source: str = "manual",
+                   start: bool = True) -> "CollectTask":
+    """建一个采集任务并登记。start=False 时只排队（批量任务用）。"""
+    label, argv = build_collect_argv(account_id, mode, params)
+    task = CollectTask(account_id, label, argv, on_done=_after_collect_push, source=source)
+    task.job = mode
+    task.sync_window = _sync_window_of(mode, params)
+    _register(task)
+    if start:
+        _tasks[account_id] = task
+        task.start()
+    return task
+
+
+def run_batch(tasks: list["CollectTask"]) -> None:
+    """按顺序逐个跑已排队的任务（阻塞）。账号之间串行，同账号有任务在跑就跳过。"""
+    for task in tasks:
+        if task.finished:
+            continue
+        busy = _tasks.get(task.account_id)
+        if busy and busy is not task and busy.running:
+            task.skip(f"该账号已有任务在跑：{busy.label}")
+            continue
+        _tasks[task.account_id] = task
+        task.start()
+        task.done.wait()
 
 
 def collect_params_recent_years(years: int = 2) -> dict:
@@ -359,6 +562,10 @@ def api_accounts() -> JSONResponse:
         out.append({
             "account_id": a.account_id,
             "account": a.account,
+            "name": getattr(a, "name", "") or "",
+            "remark": getattr(a, "remark", "") or "",
+            "status": getattr(a, "status", "active") or "active",
+            "password_set": bool(getattr(a, "password", "")),
             "scenic_id": getattr(a, "scenic_id", "") or "",
             "has_state": store.exists(a.account_id),
             "is_fresh": store.is_fresh(a.account_id),
@@ -368,6 +575,8 @@ def api_accounts() -> JSONResponse:
             "browser": ("live" if worker and worker.alive else "off"),
             "task": (_tasks[a.account_id].label
                      if a.account_id in _tasks and _tasks[a.account_id].running else ""),
+            "task_run_id": (_tasks[a.account_id].run_id
+                            if a.account_id in _tasks and _tasks[a.account_id].running else ""),
         })
     vnc_ok, vnc_detail = check_dependencies()
     fs = notify.Settings.load().feishu
@@ -687,14 +896,73 @@ async def api_collect(account_id: str, mode: str, params: dict | None = None) ->
     existing = _tasks.get(account_id)
     if existing and existing.running:
         raise HTTPException(409, f"该账号已有任务在跑：{existing.label}")
-    label, argv = build_collect_argv(account_id, mode, params)
-    task = CollectTask(account_id, label, argv, on_done=_after_collect_push)
-    task.job = mode
-    task.sync_window = _sync_window_of(mode, params)
-    _tasks[account_id] = task
-    task.start()
-    return JSONResponse({"ok": True, "label": label, "argv": argv,
-                         "sync_window": task.sync_window})
+    task = launch_collect(account_id, mode, params, source="manual")
+    return JSONResponse({"ok": True, "label": task.label, "argv": task.argv,
+                         "run_id": task.run_id, "sync_window": task.sync_window})
+
+
+# =============================================================================
+# 任务管理：新建采集任务（可多账号）、运行列表、运行日志
+# =============================================================================
+
+@app.get("/api/runs")
+def api_runs(limit: int = 100, account_id: str = "") -> JSONResponse:
+    return JSONResponse({"runs": list_runs(max(1, min(500, limit)), account_id)})
+
+
+@app.post("/api/runs")
+async def api_runs_create(payload: dict) -> JSONResponse:
+    """新建采集任务并立即运行。多个账号按顺序串行，排队中的也会出现在列表里。
+
+    payload: {"account_ids": [...], "mode": "day"|"month", "params": {...}}
+    """
+    payload = payload or {}
+    mode = payload.get("mode") or "day"
+    if mode not in ("day", "month"):
+        raise HTTPException(400, f"未知采集类型：{mode}")
+    params = dict(payload.get("params") or {})
+    known = {a.account_id for a in _cfg.ctrip.accounts}
+    ids = [str(x) for x in (payload.get("account_ids") or []) if str(x) in known]
+    if not ids:
+        raise HTTPException(400, "至少选一个账号")
+    busy = [a for a in ids if _tasks.get(a) and _tasks[a].running]
+    tasks = []
+    try:
+        for aid in ids:
+            tasks.append(launch_collect(aid, mode, params, source="manual", start=False))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"参数有误：{exc}")
+    threading.Thread(target=run_batch, args=(tasks,), name="collect-batch",
+                     daemon=True).start()
+    msg = f"已创建 {len(tasks)} 个采集任务" + (
+        f"，其中 {len(busy)} 个账号已有任务在跑，轮到时会跳过" if busy else "")
+    return JSONResponse({"ok": True, "message": msg,
+                         "runs": [t.summary() for t in tasks]})
+
+
+@app.get("/api/runs/{run_id}/log")
+def api_run_log(run_id: str, after: int = 0) -> JSONResponse:
+    summary, lines = read_run_log(run_id, max(0, after))
+    if summary is None:
+        raise HTTPException(404, "运行记录不存在")
+    return JSONResponse({"run": summary, "lines": lines,
+                         "next": max(0, after) + len(lines)})
+
+
+@app.post("/api/runs/{run_id}/stop")
+def api_run_stop(run_id: str) -> JSONResponse:
+    task = _runs.get(run_id)
+    if task is None:
+        raise HTTPException(404, "运行记录不存在或已结束")
+    if task.status == "queued":
+        task.skip("已手动取消")
+        return JSONResponse({"ok": True, "message": "已取消排队"})
+    if task.running:
+        task.stop()
+        return JSONResponse({"ok": True, "message": "已请求停止"})
+    return JSONResponse({"ok": True, "message": "任务已结束"})
 
 
 # =============================================================================
@@ -742,11 +1010,25 @@ def _run_scheduled_collect(job: str) -> None:
         return
 
     source = "catchup" if job == "catchup" else "schedule"
+    tasks = _queue_items(items, title, source)
+    if tasks:
+        _sync_log("info", f"定时{title}：{len(tasks)} 个账号排队，逐个执行")
+        run_batch(tasks)
+        for t in tasks:
+            sm = t.summary()
+            _sync_log({"success": "info", "partial": "warn"}.get(sm["status"], "error"),
+                      f"{t.account_id} {t.label} {sm['status_text']}"
+                      f"{('（' + sm['detail'] + '）') if sm['detail'] else ''}")
+
+
+def _queue_items(items: list[dict], title: str, source: str) -> list["CollectTask"]:
+    """把计划变成排队中的任务；登录态有问题的记一条跳过并发通知。"""
+    tasks = []
     for item in items:
         aid = item["account_id"]
         if item["skip"]:
             _sync_log("warn", f"定时{title}跳过 {aid}：{item['skip']}")
-            _record_collect(aid, title, source, "跳过", item["skip"])
+            _record_collect(aid, title, source, item["skip"])
             # 登录态问题是要人来处理的，光记日志没人看得见
             if "登录" in item["skip"]:
                 try:
@@ -756,30 +1038,13 @@ def _run_scheduled_collect(job: str) -> None:
                 except Exception:  # noqa: BLE001
                     pass
             continue
-
-        running = _tasks.get(aid)
-        if running and running.running:
-            _sync_log("warn", f"定时{title}跳过 {aid}：已有任务在跑（{running.label}）")
-            _record_collect(aid, title, source, "跳过", f"已有任务在跑：{running.label}")
-            continue
-
         try:
-            label, argv = build_collect_argv(aid, item["job"], item["params"])
-            task = CollectTask(aid, label, argv, on_done=_after_collect_push,
-                               source=source)
-            task.job = item["job"]
-            task.sync_window = _sync_window_of(item["job"], item["params"])
-            _tasks[aid] = task
-            task.start()
-            _sync_log("info", f"定时{title}已发起 {aid}：{label}")
-            # 串行：等这个账号跑完再发起下一个
-            while task.running or task.rc is None:
-                time.sleep(2)
-            _sync_log({0: "info", 1: "warn"}.get(task.rc, "error"),
-                      f"{aid} {label} {rc_text(task.rc)}{task.empty_detail()}")
+            tasks.append(launch_collect(aid, item["job"], item["params"],
+                                        source=source, start=False))
         except Exception as exc:  # noqa: BLE001
             _sync_log("error", f"定时采集 {aid} 发起失败：{exc}")
-            _record_collect(aid, title, source, "发起失败", str(exc))
+            _record_collect(aid, title, source, f"发起失败：{exc}")
+    return tasks
 
 
 def _catchup_window_text(cs: csched.CollectSchedule) -> str:
@@ -846,34 +1111,13 @@ async def api_collect_catchup_now() -> JSONResponse:
     todo = [i for i in items if not i["skip"]]
     if not items:
         return JSONResponse({"ok": True, "message": "上月评级各账号都已采齐，无需补采"})
-
-    def _go() -> None:
-        # 复用定时的串行逻辑，但跳过「是否在补采期」判断
-        for item in items:
-            aid = item["account_id"]
-            if item["skip"]:
-                _record_collect(aid, "评级补采", "catchup", "跳过", item["skip"])
-                continue
-            running = _tasks.get(aid)
-            if running and running.running:
-                _record_collect(aid, "评级补采", "catchup", "跳过",
-                                f"已有任务在跑：{running.label}")
-                continue
-            label, argv = build_collect_argv(aid, "month", item["params"])
-            task = CollectTask(aid, label, argv, on_done=_after_collect_push,
-                               source="catchup")
-            task.job = "month"
-            task.sync_window = _sync_window_of("month", item["params"])
-            _tasks[aid] = task
-            task.start()
-            while task.running or task.rc is None:
-                time.sleep(2)
-
-    threading.Thread(target=_go, name="catchup-now", daemon=True).start()
+    tasks = _queue_items(items, "评级补采", "catchup")
+    threading.Thread(target=run_batch, args=(tasks,), name="catchup-now",
+                     daemon=True).start()
     return JSONResponse({"ok": True, "message":
                          f"已开始补采 {len(todo)} 个账号，"
                          f"{len(items) - len(todo)} 个因登录态跳过",
-                         "items": items})
+                         "items": items, "runs": [t.summary() for t in tasks]})
 
 
 # =============================================================================
@@ -901,7 +1145,10 @@ def api_sync_config() -> JSONResponse:
         k: {"name": datasync.TABLES[k].name,
             "comment": datasync.TABLES[k].comment,
             "time_column": datasync.TABLES[k].partition_column,
-            "period": "daily" if k in datasync.DAILY_TABLES else "monthly"}
+            "period": "daily" if k in datasync.DAILY_TABLES else "monthly",
+            "unique_key": list(datasync.TABLES[k].unique_key),
+            "columns": [{"name": f.name, "type": f.type, "comment": f.comment}
+                        for f in datasync.TABLES[k].fields]}
         for k in datasync.BUSINESS_TABLES
     }
     data["next_daily"] = _fmt_dt(_scheduler.next_of("sync", "daily") if _scheduler else None)
@@ -945,7 +1192,7 @@ def api_sync_status() -> JSONResponse:
         "next_collect_daily": _fmt_dt(_scheduler.next_of("collect", "daily") if _scheduler else None),
         "next_collect_monthly": _fmt_dt(_scheduler.next_of("collect", "monthly") if _scheduler else None),
         "scheduler_alive": bool(_scheduler and _scheduler.is_alive()),
-        "collect_history": list(_collect_history)[:20],
+        "collect_history": list_runs(20),
     })
 
 
@@ -1054,14 +1301,8 @@ def _start_first_collect(account_id: str, spec: dict) -> tuple[str, list[str], s
     else:
         params["months"] = years * 12
     try:
-        label, argv = build_collect_argv(account_id, job, params)
-        task = CollectTask(account_id, label, argv, on_done=_after_collect_push,
-                           source="login")
-        task.job = job
-        task.sync_window = _sync_window_of(job, params)
-        _tasks[account_id] = task
-        task.start()
-        return label, argv, ""
+        task = launch_collect(account_id, job, params, source="login")
+        return task.label, task.argv, ""
     except Exception as exc:  # noqa: BLE001
         return "", [], str(exc)
 
