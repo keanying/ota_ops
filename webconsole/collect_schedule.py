@@ -15,6 +15,10 @@
   而且同一账号已有任务在跑时直接跳过，不排队堆积。
 * **只管发起，不等结果。** 每个账号的采集结果由 CollectTask 自己写进
   run_log 和页面日志，这里只负责按时把它拉起来。
+* **评级没出数就逐日补采。** 携程的月度评级（尤其目的地评级）月初往往
+  还没产出上月数据，1 号跑一次常常拿到 0 行。月任务之后的
+  ``monthly_retry_days`` 天里，每天的定时会顺带查一下本地库：
+  上月哪张评级表还没数据，就只补采那一张，补齐即停。
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ class CollectSchedule:
     monthly_enabled: bool = False
     monthly_day: int = 6         # 评级类接口只对上月有数据，月初几天后跑
     monthly_at: str = "03:00"
+    monthly_retry_days: int = 7  # 月任务后若干天内，评级仍缺数则每天补采；0=不补
     account_ids: list[str] = field(default_factory=list)   # 空=全部启用的账号
     skip_stale_login: bool = True
 
@@ -55,6 +60,7 @@ class CollectSchedule:
             monthly_enabled=bool(raw.get("monthly_enabled", False)),
             monthly_day=max(1, min(28, int(raw.get("monthly_day") or 6))),
             monthly_at=raw.get("monthly_at") or "03:00",
+            monthly_retry_days=max(0, min(27, int(raw.get("monthly_retry_days", 7) or 0))),
             account_ids=[str(x) for x in (raw.get("account_ids") or []) if str(x).strip()],
             skip_stale_login=bool(raw.get("skip_stale_login", True)),
         )
@@ -72,6 +78,14 @@ class CollectSchedule:
             monthly_at=self.monthly_at,
         )
 
+    def as_catchup_schedule(self) -> Schedule:
+        """评级补采：每天在月任务的时刻检查一次（是否在补采期由任务自己判断）。"""
+        return Schedule(
+            daily_enabled=(self.enabled and self.monthly_enabled
+                           and self.monthly_retry_days > 0),
+            daily_at=self.monthly_at,
+        )
+
 
 def target_accounts(cfg, cs: CollectSchedule) -> list:
     """本次要跑哪些账号。"""
@@ -82,6 +96,11 @@ def target_accounts(cfg, cs: CollectSchedule) -> list:
     return accounts
 
 
+# 月表 → CLI 的 --job 名
+MONTH_JOBS = {"destination_rating": "rating", "supplier_rate_score": "score"}
+JOB_LABELS = {"rating": "目的地评级", "score": "供应商评级"}
+
+
 def month_param(today: date | None = None) -> str:
     """上个月 —— 评级类接口只对上月有数据。"""
     today = today or date.today()
@@ -89,23 +108,52 @@ def month_param(today: date | None = None) -> str:
     return (first - timedelta(days=1)).strftime("%Y-%m")
 
 
-def plan(cfg, cs: CollectSchedule, job: str) -> list[dict]:
+def in_retry_window(cs: CollectSchedule, today: date) -> bool:
+    """今天是否处在「月任务之后的补采期」内（不含月任务当天）。"""
+    if not (cs.enabled and cs.monthly_enabled and cs.monthly_retry_days > 0):
+        return False
+    return cs.monthly_day < today.day <= cs.monthly_day + cs.monthly_retry_days
+
+
+def _login_skip(store: CookieStore, cs: CollectSchedule, account_id: str) -> str:
+    if not cs.skip_stale_login:
+        return ""
+    if not store.exists(account_id):
+        return "从未登录"
+    if not store.is_fresh(account_id):
+        return "登录态已过期"
+    return ""
+
+
+def plan(cfg, cs: CollectSchedule, job: str, today: date | None = None,
+         coverage: dict[str, dict[str, int]] | None = None) -> list[dict]:
     """算出这次要发起哪些采集。返回每个账号的参数，附带跳过原因。
+
+    job = daily | monthly | catchup。catchup 是评级补采：需要传入 ``coverage``
+    （``datasync.month_coverage`` 的结果），只为上月还缺数据的表发起采集。
 
     只做计算不做副作用，方便在页面上「预览」和在测试里断言。
     """
+    today = today or date.today()
+    month = month_param(today)
     store = CookieStore(cfg)
     out = []
     for a in target_accounts(cfg, cs):
         item = {"account_id": a.account_id, "job": "day" if job == "daily" else "month",
-                "skip": "", "params": {}}
-        if cs.skip_stale_login:
-            if not store.exists(a.account_id):
-                item["skip"] = "从未登录"
-            elif not store.is_fresh(a.account_id):
-                item["skip"] = "登录态已过期"
+                "kind": job, "skip": "", "params": {}}
+        if job == "catchup":
+            have = (coverage or {}).get(a.account_id, {})
+            missing = [MONTH_JOBS[k] for k in MONTH_JOBS if not have.get(k)]
+            if not missing:
+                continue                      # 上月已齐，不打扰
+            item["missing"] = missing
+        item["skip"] = _login_skip(store, cs, a.account_id)
         if not item["skip"]:
-            item["params"] = ({"days": cs.daily_days} if job == "daily"
-                              else {"month": month_param()})
+            if job == "daily":
+                item["params"] = {"days": cs.daily_days}
+            elif job == "catchup":
+                item["params"] = {"month": month, "jobs": item["missing"]}
+            else:
+                item["params"] = {"month": month}
         out.append(item)
     return out

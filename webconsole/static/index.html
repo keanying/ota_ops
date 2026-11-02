@@ -445,7 +445,15 @@
 
       <h3>按月采集</h3>
       <div class="field"><label>月份</label><input id="month" type="month"></div>
-      <p class="note">评级类接口只对上个月有数据，留空即取上月。</p>
+      <div class="field"><label>采哪些</label>
+        <select id="monthJobs">
+          <option value="">目的地评级 + 供应商评级</option>
+          <option value="rating">只采目的地评级</option>
+          <option value="score">只采供应商评级</option>
+        </select></div>
+      <p class="note">评级类接口只对上个月有数据，留空即取上月。月初目的地评级常常还没出数，
+        供应商评级已经有了 —— 这种情况会显示「部分完成」，已采到的照常入库并推送，
+        之后单独补「只采目的地评级」即可（定时会自动补）。</p>
       <button class="btn btn--go" id="btnMonth">采集月数据</button>
 
                 <button class="btn btn--stop" id="btnStopTask" disabled>停止当前任务</button>
@@ -512,12 +520,20 @@
         <input class="num" id="csMonthDay" type="number" min="1" max="28" value="6">
         <span class="unit">号</span>
         <input id="csMonthAt" type="time" value="03:00"></div>
+      <div class="field"><label>缺数补采</label>
+        <input class="num" id="csMonthRetry" type="number" min="0" max="27" value="7">
+        <span class="unit">天，0 = 不补</span></div>
+      <p class="note" id="csCatchup" style="margin:0 0 8px">
+        月任务之后的这几天里，每天同一时刻查本地库：上月哪张评级表还没数据，就只补那一张，补齐即停。</p>
       <label class="check"><input type="checkbox" id="csSkipStale" checked>
         登录态失效时跳过并发通知</label>
       <p class="note" id="csNext">下次运行：—</p>
       <div class="btn-row">
         <button class="btn btn--go" id="btnCsSave">保存定时</button>
         <button class="btn" id="btnCsPreview">预览会跑哪些账号</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="btnCatchup">立即补采上月缺失评级</button>
       </div>
       <p class="note">采集完成后会自动推送下游（配置在「设置」标签），不用两边都配定时。</p>
 
@@ -552,7 +568,14 @@
         <summary>最近运行</summary>
         <div class="grp-body">
 
-      <div id="syHistory" class="note">暂无记录
+      <div class="sub" style="margin-top:0">采集</div>
+      <div id="csHistory" class="note">暂无记录</div>
+      <div class="sub">推送下游</div>
+      <div id="syHistory" class="note">暂无记录</div>
+      <details class="sub-grp">
+        <summary>调度日志</summary>
+        <div id="schedLogs" class="note">暂无</div>
+      </details>
         </div>
       </details>
 
@@ -880,7 +903,9 @@ function handle(m){
       toast(m.ok ? "登录态已保存" : "登录态校验没通过：" + m.detail);
       loadAccounts(); break;
     case "task":
-      log(m.message, m.level === "done" ? "done" : m.level, m.at);
+      log(m.message, m.rc === undefined
+            ? (m.level === "done" ? "done" : m.level)
+            : (m.rc === 0 ? "done" : m.rc === 1 ? "warn" : "error"), m.at);
       if (m.rc !== undefined){ $("btnStopTask").disabled = true; toast(m.message); loadAccounts(); }
       break;
     default: log(m.message || JSON.stringify(m), m.level || "info", m.at);
@@ -1248,6 +1273,7 @@ $("btnDay").onclick = () => {
 $("btnMonth").onclick = () => {
   const p = {};
   if ($("month").value) p.month = $("month").value;
+  if ($("monthJobs").value) p.jobs = [$("monthJobs").value];
   runCollect("month", p);
 };
 $("btnStopTask").onclick = async () => {
@@ -1296,9 +1322,13 @@ async function loadCollectSchedule(){
   $("csMonthly").checked = !!d.monthly_enabled;
   $("csMonthDay").value = d.monthly_day || 6;
   $("csMonthAt").value = d.monthly_at || "03:00";
+  $("csMonthRetry").value = d.monthly_retry_days ?? 7;
   $("csSkipStale").checked = d.skip_stale_login !== false;
   $("csNext").textContent =
     `下次运行：日 ${d.next_daily || "未启用"} · 月 ${d.next_monthly || "未启用"}`;
+  $("csCatchup").textContent = d.catchup
+    ? `${d.catchup}（当前目标月份 ${d.target_month}）`
+    : "未开启缺数补采：月任务那天评级没出数的话，需要手动补。";
   const on = d.enabled && (d.daily_enabled || d.monthly_enabled);
   $("csState").textContent = on ? "已启用，到点自动采集并推送下游"
                                 : "未启用，只能手动点采集";
@@ -1315,6 +1345,7 @@ $("btnCsSave").onclick = async () => {
       monthly_enabled: $("csMonthly").checked,
       monthly_day: parseInt($("csMonthDay").value, 10) || 6,
       monthly_at: $("csMonthAt").value,
+      monthly_retry_days: Math.max(0, parseInt($("csMonthRetry").value, 10) || 0),
       skip_stale_login: $("csSkipStale").checked,
     })});
     toast("定时采集已保存");
@@ -1323,15 +1354,38 @@ $("btnCsSave").onclick = async () => {
   } catch (e){ log(e.message, "error"); toast(e.message); }
 };
 
+const JOB_NAMES = {daily: "日数据", monthly: "月数据", catchup: "评级补采"};
+const MJOB_NAMES = {rating: "目的地评级", score: "供应商评级"};
+function describeParams(p){
+  if (p.days) return `近 ${p.days} 天`;
+  if (p.month) return p.month + (p.jobs ? "（" + p.jobs.map(j => MJOB_NAMES[j] || j).join("、") + "）" : "");
+  return JSON.stringify(p);
+}
 $("btnCsPreview").onclick = async () => {
-  for (const job of ["daily", "monthly"]){
-    const d = await api(`/api/collect/schedule/preview?job=${job}`);
-    if (!d.items.length){ log(`${job}：没有符合条件的账号`, "warn"); continue; }
-    d.items.forEach(it => log(
-      `  ${job} · ${it.account_id}：` +
-      (it.skip ? `跳过（${it.skip}）` : `采集 ${JSON.stringify(it.params)}`),
-      it.skip ? "warn" : "info"));
-  }
+  try {
+    for (const job of ["daily", "monthly", "catchup"]){
+      const d = await api(`/api/collect/schedule/preview?job=${job}`);
+      const name = JOB_NAMES[job];
+      if (d.reason){ log(`${name}：${d.reason}`, "warn"); continue; }
+      if (!d.items.length){
+        log(job === "catchup" ? `${name}：上月（${d.month}）评级都已采齐`
+                              : `${name}：没有符合条件的账号`, job === "catchup" ? "done" : "warn");
+        continue;
+      }
+      d.items.forEach(it => log(
+        `  ${name} · ${it.account_id}：` +
+        (it.skip ? `跳过（${it.skip}）` : `采集 ${describeParams(it.params)}`),
+        it.skip ? "warn" : "info"));
+    }
+    $("logs").classList.remove("min"); $("btnFoldLog").textContent = "收起";
+  } catch (e){ log(e.message, "error"); toast(e.message); }
+};
+$("btnCatchup").onclick = async () => {
+  try {
+    const r = await api("/api/collect/schedule/catchup", {method:"POST"});
+    log(r.message, "done"); toast(r.message);
+    setTimeout(loadSyncHistory, 1500);
+  } catch (e){ log(e.message, "error"); toast(e.message); }
 };
 
 /* ---------------------------------------------------------------- 数据同步 */
@@ -1377,7 +1431,7 @@ async function loadSync(){
         <input class="num" data-sy="lb" data-key="${key}" type="number" min="1" max="120"
                value="${t.lookback || (meta.period === "daily" ? 7 : 2)}">
         <span class="unit">${meta.period === "daily" ? "天" : "个月"}
-          · 按 ${meta.time_column}</span></div>`;
+          · 按 ${meta.time_column}${meta.period === "daily" ? "，到昨天为止" : "，从上个月往前算"}</span></div>`;
     box.appendChild(wrap);
   }
 }
@@ -1452,6 +1506,22 @@ async function loadSyncHistory(){
       + (d.scheduler_alive ? "" : "（调度未启动）");
     if ($("csNext")) $("csNext").textContent =
       `下次运行：日 ${d.next_collect_daily || "未启用"} · 月 ${d.next_collect_monthly || "未启用"}`;
+    const esc = t => String(t ?? "").replace(/[&<>"]/g, c =>
+      ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const SRC = {manual:"手动", schedule:"定时", catchup:"补采", login:"首采"};
+    const cs = d.collect_history || [];
+    $("csHistory").innerHTML = cs.length ? cs.map(h => {
+      const cls = h.status === "完成" ? "ok" : (h.status === "部分完成" || h.status === "跳过") ? "warn" : "bad";
+      return `<div class="kv"><span>${esc(h.at)}</span>
+              <b>${esc(h.account_id)} · ${esc(SRC[h.source] || h.source)} · ${esc(h.label)}
+              <span class="tag ${cls}" style="margin-left:6px">${esc(h.status)}</span>
+              ${h.detail ? `<br><small style="color:var(--muted)">${esc(h.detail)}</small>` : ""}</b></div>`;
+    }).join("") : "暂无记录（控制台重启后清空）";
+    const lg = d.logs || [];
+    $("schedLogs").innerHTML = lg.length ? lg.slice(0, 40).map(l =>
+      `<div class="kv"><span>${esc(l.at)}</span><b style="color:${
+        l.level === "error" ? "var(--stop)" : l.level === "warn" ? "var(--signal)" : "inherit"}">${esc(l.message)}</b></div>`
+    ).join("") : "暂无";
     const box = $("syHistory");
     if (!d.history.length){ box.textContent = "暂无记录"; return; }
     box.innerHTML = d.history.map(h => {

@@ -34,6 +34,7 @@ from typing import Any
 
 from ctrip.logging_utils import get_logger
 from ctrip.schema import BUSINESS_TABLES, TABLES
+from ctrip.timeutil import get_timezone
 
 logger = get_logger("datasync")
 
@@ -156,6 +157,23 @@ def _jsonable(v: Any) -> Any:
     return str(v)
 
 
+def today_of(cfg=None) -> date:
+    """业务口径的「今天」。
+
+    采集 CLI 按 ``run.timezone``（默认 Asia/Shanghai）推导昨天 / 上个月，
+    控制台这边也必须用同一个时区，否则服务器跑在 UTC 时，
+    零点前后两边对「昨天」「上个月」的理解会差一天 / 一个月，
+    推送窗口就和实际采集的区间对不上。
+    """
+    tz_name = getattr(getattr(cfg, "run", None), "timezone", "") or "Asia/Shanghai"
+    return datetime.now(get_timezone(tz_name, log=logger)).date()
+
+
+def last_month(today: date) -> str:
+    """上个月 YYYY-MM —— 评级类数据只有上月及更早。"""
+    return (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+
 def window_for(table_key: str, lookback: int, today: date | None = None) -> tuple[str, str]:
     """返回 (下界, 上界)，都是闭区间，格式与表里的时间列一致。"""
     today = today or date.today()
@@ -163,8 +181,10 @@ def window_for(table_key: str, lookback: int, today: date | None = None) -> tupl
         end = today - timedelta(days=1)          # 采到昨天为止
         start = end - timedelta(days=max(0, lookback - 1))
         return start.isoformat(), end.isoformat()
-    # 月表：往前推 lookback 个月（含当月）
-    y, m = today.year, today.month
+    # 月表：从**上个月**往前推 lookback 个月。
+    # 不能从当月算起：评级数据只有上月及更早，当月永远是空的；
+    # 之前「含当月」的算法在 lookback=1 时窗口只有当月，定时补推永远取到 0 行。
+    y, m = (int(x) for x in last_month(today).split("-"))
     months = []
     for _ in range(max(1, lookback)):
         months.append(f"{y}-{m:02d}")
@@ -172,6 +192,50 @@ def window_for(table_key: str, lookback: int, today: date | None = None) -> tupl
         if m == 0:
             y, m = y - 1, 12
     return min(months), max(months)
+
+
+def _connect(cfg):
+    import pymysql
+
+    mc = cfg.mysql
+    return pymysql.connect(
+        host=mc.host, port=mc.port, user=mc.user, password=mc.password,
+        database=mc.database, charset=mc.charset,
+        connect_timeout=mc.connect_timeout,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+
+
+def _physical_table(cfg, table_key: str) -> str:
+    """本地物理表名，带上配置的表前缀（与采集写入时一致）。"""
+    return TABLES[table_key].table_name(getattr(cfg.mysql, "table_prefix", "") or "")
+
+
+def month_coverage(cfg, month: str, account_ids: list[str],
+                   table_keys: tuple[str, ...] = MONTHLY_TABLES) -> dict[str, dict[str, int]]:
+    """各账号在某个月、各月表里有多少行。用来判断评级数据补齐了没有。
+
+    返回 {account_id: {table_key: 行数}}；没有行的账号/表也会出现，值为 0。
+    """
+    out = {aid: {k: 0 for k in table_keys} for aid in account_ids}
+    if not account_ids:
+        return out
+    conn = _connect(cfg)
+    try:
+        with conn.cursor() as cur:
+            for key in table_keys:
+                col = TABLES[key].partition_column
+                marks = ",".join(["%s"] * len(account_ids))
+                cur.execute(
+                    f"SELECT `account_id`, COUNT(*) AS n FROM `{_physical_table(cfg, key)}` "
+                    f"WHERE `{col}` = %s AND `account_id` IN ({marks}) GROUP BY `account_id`",
+                    [month, *account_ids])
+                for r in cur.fetchall() or []:
+                    if r["account_id"] in out:
+                        out[r["account_id"]][key] = int(r["n"] or 0)
+    finally:
+        conn.close()
+    return out
 
 
 def fetch_rows(cfg, table_key: str, lookback: int,
@@ -183,28 +247,20 @@ def fetch_rows(cfg, table_key: str, lookback: int,
     window 显式给定时用它 —— 采集完立刻推的场景要按那一次采集的区间推，
     而不是按配置里的回溯天数，否则会把无关的历史数据一起重推一遍。
     """
-    import pymysql
-
     schema = TABLES[table_key]
     col = schema.partition_column
-    low, high = window or window_for(table_key, lookback)
+    low, high = window or window_for(table_key, lookback, today_of(cfg))
 
     where = [f"`{col}` >= %s", f"`{col}` <= %s"]
     args: list[Any] = [low, high]
     if account_ids:
         where.append("`account_id` IN (" + ",".join(["%s"] * len(account_ids)) + ")")
         args.extend(account_ids)
-    sql = f"SELECT * FROM `{schema.name}` WHERE {' AND '.join(where)} ORDER BY `{col}`"
+    sql = f"SELECT * FROM `{_physical_table(cfg, table_key)}` WHERE {' AND '.join(where)} ORDER BY `{col}`"
     if limit:
         sql += f" LIMIT {int(limit)}"
 
-    mc = cfg.mysql
-    conn = pymysql.connect(
-        host=mc.host, port=mc.port, user=mc.user, password=mc.password,
-        database=mc.database, charset=mc.charset,
-        connect_timeout=mc.connect_timeout,
-        cursorclass=pymysql.cursors.DictCursor,
-    )
+    conn = _connect(cfg)
     try:
         with conn.cursor() as cur:
             cur.execute(sql, args)

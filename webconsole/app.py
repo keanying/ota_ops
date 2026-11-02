@@ -22,6 +22,7 @@ import json
 import os
 import platform
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -110,15 +111,48 @@ def _account_index(account_id: str) -> int:
 # 采集任务：起子进程跑项目自己的 CLI，stdout 实时回流
 # =============================================================================
 
+def rc_text(rc: int | None) -> str:
+    """CLI 退出码 → 人话。0 全部成功；1 部分成功（如某个任务上游还没出数）；2 全部失败。
+
+    退出码 1 不是失败：已采到的数据都已入库，照常推送下游。
+    之前把 1 也显示成「失败」，且推送只认 0 —— 评级没出数时，
+    同一次已经入库的供应商评级也被连带卡住推不出去。
+    """
+    if rc == 0:
+        return "完成"
+    if rc == 1:
+        return "部分完成"
+    if rc is None:
+        return "运行中"
+    return f"失败（退出码 {rc}）"
+
+
+_EMPTY_JOB_RE = re.compile(r"任务 (\w+) 未采集到数据")
+
+# 最近的采集记录（手动 + 定时），页面「最近运行」里展示
+_collect_history: deque = deque(maxlen=50)
+
+
+def _record_collect(account_id: str, label: str, source: str, status: str,
+                    detail: str = "") -> None:
+    _collect_history.appendleft({
+        "at": datetime.now().strftime("%m-%d %H:%M"),
+        "account_id": account_id, "label": label, "source": source,
+        "status": status, "detail": detail,
+    })
+
+
 class CollectTask:
     """一次采集任务。用子进程而非直接 import，避免与控制台共享日志/事件循环。"""
 
     def __init__(self, account_id: str, label: str, argv: list[str],
-                 on_done=None) -> None:
+                 on_done=None, source: str = "manual") -> None:
         self.account_id = account_id
         self.label = label
         self.argv = argv
         self.on_done = on_done
+        self.source = source             # manual / schedule / catchup / login
+        self.empty_jobs: list[str] = []  # 跑了但上游没数据的任务（如 rating 还没出）
         self.job = "day"
         self.sync_window: tuple[str, str] | None = None
         self.lines: deque[str] = deque(maxlen=500)
@@ -156,13 +190,17 @@ class CollectTask:
         for line in self.proc.stdout:
             line = line.rstrip()
             if line:
+                hit = _EMPTY_JOB_RE.search(line)
+                if hit and hit.group(1) not in self.empty_jobs:
+                    self.empty_jobs.append(hit.group(1))
                 level = "error" if (" ERROR " in line or "❌" in line) else (
                     "warn" if (" WARNING " in line or "⚠" in line) else "info")
                 self._push(level, line)
         self.rc = self.proc.wait()
-        self._push("done",
-                   f"{self.label} {'完成' if self.rc == 0 else f'失败（退出码 {self.rc}）'}",
-                   rc=self.rc)
+        detail = self.empty_detail()
+        self._push("done", f"{self.label} {rc_text(self.rc)}{detail}", rc=self.rc)
+        _record_collect(self.account_id, self.label, self.source,
+                        rc_text(self.rc), detail.strip("（）"))
         if self.on_done:
             # 采集完成的后续动作（推 API）单独兜异常：
             # 推送失败不该让这次采集看起来像失败了，数据已经在本地库里
@@ -178,6 +216,14 @@ class CollectTask:
         self.lines.append(message)
         self.queue.put(item)
 
+    def empty_detail(self) -> str:
+        if not self.empty_jobs:
+            return ""
+        names = "、".join(csched.JOB_LABELS.get(j, j) for j in self.empty_jobs)
+        hint = ("，月初评级常常还没出上月数据，开启「缺数补采」后定时会逐日自动补"
+                if set(self.empty_jobs) & set(csched.JOB_LABELS) else "")
+        return f"（{names} 上游暂无数据{hint}）"
+
     def stop(self) -> None:
         if self.proc and self.rc is None:
             self.proc.terminate()
@@ -186,7 +232,7 @@ class CollectTask:
 
 def collect_params_recent_years(years: int = 2) -> dict:
     """近 N 年的日数据区间。默认两年 —— 首次登录成功后把历史一次性拉齐。"""
-    end = date.today() - timedelta(days=1)
+    end = datasync.today_of(_cfg) - timedelta(days=1)
     start = end - timedelta(days=365 * years)
     return {"start_date": start.isoformat(), "end_date": end.isoformat()}
 
@@ -197,7 +243,8 @@ def _after_collect_push(task: "CollectTask") -> None:
     采集子进程已经把数据直写本地 MySQL；这里只负责把同一个窗口的数据
     读出来推给 API。两件事分开做，API 不通不会影响入库。
     """
-    if task.rc != 0:
+    # 1 = 部分成功：已采到的部分已经入库，照样推。只有完全失败才不推。
+    if task.rc not in (0, 1):
         return
     sc = _sync_cfg()
     if not (sc.enabled and sc.after_collect and sc.url):
@@ -252,16 +299,22 @@ def build_collect_argv(account_id: str, mode: str, params: dict) -> tuple[str, l
             argv += ["--days", str(days)]
             label = f"日数据 近 {days} 天"
     elif mode == "month":
-        argv += ["--job", "rating", "--job", "score"]
+        # jobs 可只采其中一类（评级补采时只补缺的那张表）
+        jobs = [j for j in (params.get("jobs") or ["rating", "score"])
+                if j in ("rating", "score")] or ["rating", "score"]
+        for j in jobs:
+            argv += ["--job", j]
+        only = ("" if len(jobs) == 2
+                else "（" + "、".join(csched.JOB_LABELS[j] for j in jobs) + "）")
         if params.get("start_month") and params.get("end_month"):
             argv += ["--start-month", params["start_month"],
                      "--end-month", params["end_month"]]
-            label = f"月数据 {params['start_month']}~{params['end_month']}"
+            label = f"月数据 {params['start_month']}~{params['end_month']}{only}"
         elif params.get("month"):
             argv += ["--month", params["month"]]
-            label = f"月数据 {params['month']}"
+            label = f"月数据 {params['month']}{only}"
         else:
-            label = "月数据 上个月"
+            label = f"月数据 上个月{only}"
     else:
         raise HTTPException(400, f"未知采集类型：{mode}")
 
@@ -275,15 +328,14 @@ def _sync_window_of(mode: str, params: dict) -> tuple[str, str] | None:
     if mode == "day":
         if params.get("start_date") and params.get("end_date"):
             return params["start_date"], params["end_date"]
-        end = date.today() - timedelta(days=1)
+        end = datasync.today_of(_cfg) - timedelta(days=1)
         if params.get("end_date"):
             end = date.fromisoformat(params["end_date"])
         days = max(1, int(params.get("days") or 1))
         return (end - timedelta(days=days - 1)).isoformat(), end.isoformat()
     if params.get("start_month") and params.get("end_month"):
         return params["start_month"], params["end_month"]
-    month = params.get("month") or (date.today().replace(day=1) -
-                                    timedelta(days=1)).strftime("%Y-%m")
+    month = params.get("month") or datasync.last_month(datasync.today_of(_cfg))
     return month, month
 
 
@@ -653,23 +705,48 @@ def _collect_sched() -> csched.CollectSchedule:
     return csched.CollectSchedule.from_dict(notify.Settings.load().collect)
 
 
+def _catchup_items(cs: csched.CollectSchedule, force: bool = False) -> tuple[list[dict], str]:
+    """评级补采：查本地库上月各账号缺哪张表。返回 (计划, 不补的原因)。"""
+    today = datasync.today_of(_cfg)
+    if not force and not csched.in_retry_window(cs, today):
+        return [], "不在补采期内"
+    if not _cfg.mysql.enabled:
+        return [], "未启用 MySQL，无法判断是否已采齐"
+    accounts = [a.account_id for a in csched.target_accounts(_cfg, cs)]
+    month = csched.month_param(today)
+    coverage = datasync.month_coverage(_cfg, month, accounts)
+    return csched.plan(_cfg, cs, "catchup", today=today, coverage=coverage), ""
+
+
 def _run_scheduled_collect(job: str) -> None:
-    """定时到点：逐个账号发起采集。
+    """定时到点：逐个账号发起采集。job = daily | monthly | catchup。
 
     账号之间串行 —— 同时跑多个子进程会同时压 MySQL 和对方接口；
     同一账号已有任务在跑时直接跳过，不排队堆积。
     采集完成后由 CollectTask 的回调推送下游，不用这里操心。
     """
     cs = _collect_sched()
-    items = csched.plan(_cfg, cs, job)
+    title = {"daily": "日数据", "monthly": "月数据", "catchup": "评级补采"}.get(job, job)
+    if job == "catchup":
+        items, why = _catchup_items(cs)
+        if why:
+            return
+        if not items:
+            _sync_log("info", f"评级补采：上月（{csched.month_param(datasync.today_of(_cfg))}）"
+                              "各账号评级已齐，无需补采")
+            return
+    else:
+        items = csched.plan(_cfg, cs, job, today=datasync.today_of(_cfg))
     if not items:
-        _sync_log("warn", f"定时采集（{job}）：没有符合条件的账号")
+        _sync_log("warn", f"定时采集（{title}）：没有符合条件的账号")
         return
 
+    source = "catchup" if job == "catchup" else "schedule"
     for item in items:
         aid = item["account_id"]
         if item["skip"]:
-            _sync_log("warn", f"定时采集跳过 {aid}：{item['skip']}")
+            _sync_log("warn", f"定时{title}跳过 {aid}：{item['skip']}")
+            _record_collect(aid, title, source, "跳过", item["skip"])
             # 登录态问题是要人来处理的，光记日志没人看得见
             if "登录" in item["skip"]:
                 try:
@@ -682,24 +759,35 @@ def _run_scheduled_collect(job: str) -> None:
 
         running = _tasks.get(aid)
         if running and running.running:
-            _sync_log("warn", f"定时采集跳过 {aid}：已有任务在跑（{running.label}）")
+            _sync_log("warn", f"定时{title}跳过 {aid}：已有任务在跑（{running.label}）")
+            _record_collect(aid, title, source, "跳过", f"已有任务在跑：{running.label}")
             continue
 
         try:
             label, argv = build_collect_argv(aid, item["job"], item["params"])
-            task = CollectTask(aid, label, argv, on_done=_after_collect_push)
+            task = CollectTask(aid, label, argv, on_done=_after_collect_push,
+                               source=source)
             task.job = item["job"]
             task.sync_window = _sync_window_of(item["job"], item["params"])
             _tasks[aid] = task
             task.start()
-            _sync_log("info", f"定时采集已发起 {aid}：{label}")
+            _sync_log("info", f"定时{title}已发起 {aid}：{label}")
             # 串行：等这个账号跑完再发起下一个
-            while task.running:
+            while task.running or task.rc is None:
                 time.sleep(2)
-            _sync_log("info" if task.rc == 0 else "error",
-                      f"{aid} {label} {'完成' if task.rc == 0 else f'失败（退出码 {task.rc}）'}")
+            _sync_log({0: "info", 1: "warn"}.get(task.rc, "error"),
+                      f"{aid} {label} {rc_text(task.rc)}{task.empty_detail()}")
         except Exception as exc:  # noqa: BLE001
             _sync_log("error", f"定时采集 {aid} 发起失败：{exc}")
+            _record_collect(aid, title, source, "发起失败", str(exc))
+
+
+def _catchup_window_text(cs: csched.CollectSchedule) -> str:
+    if not (cs.enabled and cs.monthly_enabled and cs.monthly_retry_days > 0):
+        return ""
+    last = cs.monthly_day + cs.monthly_retry_days
+    return (f"每月 {cs.monthly_day + 1}～{min(last, 31)} 号 {cs.monthly_at}，"
+            "上月评级仍缺数据的账号自动补采")
 
 
 @app.get("/api/collect/schedule")
@@ -711,6 +799,8 @@ def api_collect_schedule() -> JSONResponse:
                      for a in _cfg.ctrip.accounts if a.status == "active"],
         "next_daily": _fmt_dt(_scheduler.next_of("collect", "daily") if _scheduler else None),
         "next_monthly": _fmt_dt(_scheduler.next_of("collect", "monthly") if _scheduler else None),
+        "catchup": _catchup_window_text(cs),
+        "target_month": csched.month_param(datasync.today_of(_cfg)),
     })
 
 
@@ -721,13 +811,69 @@ async def api_collect_schedule_set(patch: dict) -> JSONResponse:
     sched = cs.as_schedule()
     return JSONResponse({"ok": True, **cs.to_dict(),
                          "next_daily": _fmt_dt(datasync.next_daily(sched)),
-                         "next_monthly": _fmt_dt(datasync.next_monthly(sched))})
+                         "next_monthly": _fmt_dt(datasync.next_monthly(sched)),
+                         "catchup": _catchup_window_text(cs)})
 
 
 @app.get("/api/collect/schedule/preview")
 def api_collect_preview(job: str = "daily") -> JSONResponse:
-    """预览这次定时会跑哪些账号、跳过哪些、为什么跳过。"""
-    return JSONResponse({"job": job, "items": csched.plan(_cfg, _collect_sched(), job)})
+    """预览这次定时会跑哪些账号、跳过哪些、为什么跳过。
+
+    job=catchup 时不看今天是否在补采期内，直接按本地库现状算出「现在补会补哪些」。
+    """
+    cs = _collect_sched()
+    if job == "catchup":
+        try:
+            items, why = _catchup_items(cs, force=True)
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse({"job": job, "items": [], "reason": f"查库失败：{exc}"})
+        return JSONResponse({"job": job, "items": items, "reason": why,
+                             "month": csched.month_param(datasync.today_of(_cfg))})
+    return JSONResponse({"job": job, "items": csched.plan(
+        _cfg, cs, job, today=datasync.today_of(_cfg))})
+
+
+@app.post("/api/collect/schedule/catchup")
+async def api_collect_catchup_now() -> JSONResponse:
+    """立即补采一次上月缺失的评级（不受补采期限制）。后台跑，结果看「最近运行」。"""
+    cs = _collect_sched()
+    try:
+        items, why = await asyncio.to_thread(_catchup_items, cs, True)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"查库失败：{exc}")
+    if why:
+        raise HTTPException(400, why)
+    todo = [i for i in items if not i["skip"]]
+    if not items:
+        return JSONResponse({"ok": True, "message": "上月评级各账号都已采齐，无需补采"})
+
+    def _go() -> None:
+        # 复用定时的串行逻辑，但跳过「是否在补采期」判断
+        for item in items:
+            aid = item["account_id"]
+            if item["skip"]:
+                _record_collect(aid, "评级补采", "catchup", "跳过", item["skip"])
+                continue
+            running = _tasks.get(aid)
+            if running and running.running:
+                _record_collect(aid, "评级补采", "catchup", "跳过",
+                                f"已有任务在跑：{running.label}")
+                continue
+            label, argv = build_collect_argv(aid, "month", item["params"])
+            task = CollectTask(aid, label, argv, on_done=_after_collect_push,
+                               source="catchup")
+            task.job = "month"
+            task.sync_window = _sync_window_of("month", item["params"])
+            _tasks[aid] = task
+            task.start()
+            while task.running or task.rc is None:
+                time.sleep(2)
+
+    threading.Thread(target=_go, name="catchup-now", daemon=True).start()
+    return JSONResponse({"ok": True, "message":
+                         f"已开始补采 {len(todo)} 个账号，"
+                         f"{len(items) - len(todo)} 个因登录态跳过",
+                         "items": items})
 
 
 # =============================================================================
@@ -799,6 +945,7 @@ def api_sync_status() -> JSONResponse:
         "next_collect_daily": _fmt_dt(_scheduler.next_of("collect", "daily") if _scheduler else None),
         "next_collect_monthly": _fmt_dt(_scheduler.next_of("collect", "monthly") if _scheduler else None),
         "scheduler_alive": bool(_scheduler and _scheduler.is_alive()),
+        "collect_history": list(_collect_history)[:20],
     })
 
 
@@ -908,7 +1055,8 @@ def _start_first_collect(account_id: str, spec: dict) -> tuple[str, list[str], s
         params["months"] = years * 12
     try:
         label, argv = build_collect_argv(account_id, job, params)
-        task = CollectTask(account_id, label, argv, on_done=_after_collect_push)
+        task = CollectTask(account_id, label, argv, on_done=_after_collect_push,
+                           source="login")
         task.job = job
         task.sync_window = _sync_window_of(job, params)
         _tasks[account_id] = task
@@ -1322,6 +1470,9 @@ def _build_scheduler() -> datasync.Scheduler:
                          lambda: _run_scheduled_collect("daily")),
         datasync.JobSpec("monthly", "collect", lambda: _collect_sched().as_schedule(),
                          lambda: _run_scheduled_collect("monthly")),
+        # 评级补采：每天在月任务的时刻检查一次，是否在补采期由任务自己判断
+        datasync.JobSpec("daily", "catchup", lambda: _collect_sched().as_catchup_schedule(),
+                         lambda: _run_scheduled_collect("catchup")),
         datasync.JobSpec("daily", "sync", lambda: _sync_cfg().schedule,
                          lambda: datasync.run_sync(_cfg, _sync_cfg(), "daily",
                                                    on_log=_sync_log, reason="schedule")),
