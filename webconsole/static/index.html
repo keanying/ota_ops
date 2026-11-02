@@ -234,6 +234,7 @@
   .jchip{font-size:11px;font-weight:600;padding:0 7px;border-radius:9px;background:#EEF1F7;color:var(--ink-2);white-space:nowrap}
   .jchip.ok{background:var(--ok-50);color:var(--ok)} .jchip.warn{background:var(--warn-50);color:#B26A00}
   .jchip.bad{background:var(--bad-50);color:var(--bad)} .jchip.info{background:var(--info-50);color:var(--primary-d)}
+  .card.off .card-bd{opacity:.45;pointer-events:none}
   .section-t{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:18px 0 10px}
   .section-t:first-child{margin-top:0}
   .savebar{position:sticky;bottom:-40px;margin:0 -40px -40px -36px;padding:14px 40px 18px 36px;background:linear-gradient(transparent,var(--panel) 30%);
@@ -483,15 +484,30 @@
           <div class="card-bd" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
             <label class="switch"><input type="checkbox" id="csEnabled"><span></span></label>
             <div><b style="font-size:15px">启用定时采集</b>
-              <div class="note" style="margin:2px 0 0">到点逐个账号采集、写入本地 MySQL，采完自动推送下游。账号之间串行。</div></div>
+              <div class="note" style="margin:2px 0 0">到点逐个账号采集勾选的表、写入本地 MySQL，采完自动推送（推送按「远程同步」的设置）。账号之间串行。</div></div>
             <span class="grow"></span>
             <span class="tag" id="csTag">—</span>
           </div>
         </div>
+        <div class="card">
+          <div class="card-hd"><h2>采集哪些表</h2><small>勾了的表才会定时采集</small>
+            <div class="acts"><span class="note" style="margin:0">推送哪些表在
+              <a href="#/sync-tables" style="color:var(--primary-d);font-weight:600">远程同步 → 推送表与字段</a> 里设置</span></div></div>
+          <div class="card-bd">
+            <div class="tiles" id="csTables">
+              <button type="button" class="tile" data-job="kylin" aria-pressed="true">
+                <b>交易数据</b><small>日任务 · <span data-when="daily">每天</span></small><span class="tbl mono">ads_sup_ota_ctrip_trade_di</span></button>
+              <button type="button" class="tile" data-job="rating" aria-pressed="true">
+                <b>目的地评级</b><small>月任务 · <span data-when="monthly">每月</span></small><span class="tbl mono">ads_sup_ota_ctrip_destination_rating_di</span></button>
+              <button type="button" class="tile" data-job="score" aria-pressed="true">
+                <b>供应商评级</b><small>月任务 · <span data-when="monthly">每月</span></small><span class="tbl mono">ads_sup_ota_ctrip_score_di</span></button>
+            </div>
+          </div>
+        </div>
         <div class="cols2">
-          <div class="card">
-            <div class="card-hd"><h2>日数据</h2><small>交易卡片</small>
-              <div class="acts"><label class="switch"><input type="checkbox" id="csDaily"><span></span></label></div></div>
+          <div class="card" id="csDayCard">
+            <div class="card-hd"><h2>日任务</h2><small>交易数据</small>
+              <div class="acts"><span class="tag" id="csDayTag">—</span></div></div>
             <div class="card-bd">
               <div class="field"><label>每天</label><input id="csDailyAt" type="time" value="02:30"></div>
               <div class="field"><label>回补</label>
@@ -499,9 +515,9 @@
                 <span class="unit">天，覆盖延迟产出的数据（到昨天为止）</span></div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-hd"><h2>月数据</h2><small>目的地评级 / 供应商评级，采上个月</small>
-              <div class="acts"><label class="switch"><input type="checkbox" id="csMonthly"><span></span></label></div></div>
+          <div class="card" id="csMonthCard">
+            <div class="card-hd"><h2>月任务</h2><small id="csMonthSub">评级，采上个月</small>
+              <div class="acts"><span class="tag" id="csMonthTag">—</span></div></div>
             <div class="card-bd">
               <div class="field"><label>每月</label>
                 <input class="num" id="csMonthDay" type="number" min="1" max="28" value="6">
@@ -1903,10 +1919,10 @@ $("btnTaskRun").onclick = async () => {
 async function loadCollectSchedule(){
   const d = await api("/api/collect/schedule");
   $("csEnabled").checked = !!d.enabled;
-  $("csDaily").checked = !!d.daily_enabled;
+  const jobs = d.jobs || [];
+  $("csTables").querySelectorAll(".tile").forEach(t => t.setAttribute("aria-pressed", String(jobs.includes(t.dataset.job))));
   $("csDailyAt").value = d.daily_at || "02:30";
   $("csDailyDays").value = d.daily_days || 3;
-  $("csMonthly").checked = !!d.monthly_enabled;
   $("csMonthDay").value = d.monthly_day || 6;
   $("csMonthAt").value = d.monthly_at || "03:00";
   $("csMonthRetry").value = d.monthly_retry_days ?? 7;
@@ -1915,17 +1931,37 @@ async function loadCollectSchedule(){
   $("csCatchup").textContent = d.catchup
     ? `${d.catchup}（当前目标月份 ${d.target_month}）`
     : "月任务之后的这几天里，每天同一时刻查本地库，上月哪张评级表还没数据就只补那一张，补齐即停。";
-  const on = d.enabled && (d.daily_enabled || d.monthly_enabled);
-  $("csTag").textContent = on ? "已启用" : "未启用";
-  $("csTag").className = "tag " + (on ? "ok" : "");
+  const on = d.enabled && jobs.length > 0;
+  $("csTag").textContent = on ? "已启用" : (d.enabled ? "没勾任何表" : "未启用");
+  $("csTag").className = "tag " + (on ? "ok" : (d.enabled ? "warn" : ""));
+  paintScheduleTables();
 }
+const csJobs = () => [...$("csTables").querySelectorAll('.tile[aria-pressed="true"]')].map(t => t.dataset.job);
+function paintScheduleTables(){
+  const jobs = csJobs(), day = jobs.includes("kylin"), month = jobs.filter(j => j !== "kylin");
+  $("csDayCard").classList.toggle("off", !day);
+  $("csMonthCard").classList.toggle("off", !month.length);
+  $("csDayTag").textContent = day ? "运行" : "不运行"; $("csDayTag").className = "tag " + (day ? "ok" : "");
+  $("csMonthTag").textContent = month.length ? "运行" : "不运行"; $("csMonthTag").className = "tag " + (month.length ? "ok" : "");
+  $("csMonthSub").textContent = month.length ? month.map(j => MJOB[j]).join("、") + "，采上个月" : "没勾评级表";
+  document.querySelectorAll('#csTables [data-when="daily"]').forEach(e => e.textContent = `每天 ${$("csDailyAt").value || "—"}`);
+  document.querySelectorAll('#csTables [data-when="monthly"]').forEach(e => e.textContent = `每月 ${$("csMonthDay").value} 号 ${$("csMonthAt").value || "—"}`);
+}
+$("csTables").addEventListener("click", (e) => {
+  const t = e.target.closest(".tile"); if (!t) return;
+  t.setAttribute("aria-pressed", String(t.getAttribute("aria-pressed") !== "true"));
+  paintScheduleTables();
+  $("csNext").textContent = "有改动，点「保存定时设置」生效";
+});
+["csDailyAt","csMonthDay","csMonthAt"].forEach(id => $(id).addEventListener("input", paintScheduleTables));
 $("btnCsSave").onclick = async () => {
   try {
     const r = await post("/api/collect/schedule", {
       enabled: $("csEnabled").checked,
-      daily_enabled: $("csDaily").checked, daily_at: $("csDailyAt").value,
+      jobs: csJobs(),
+      daily_enabled: csJobs().includes("kylin"), daily_at: $("csDailyAt").value,
       daily_days: parseInt($("csDailyDays").value, 10) || 3,
-      monthly_enabled: $("csMonthly").checked,
+      monthly_enabled: csJobs().some(j => j !== "kylin"),
       monthly_day: parseInt($("csMonthDay").value, 10) || 6, monthly_at: $("csMonthAt").value,
       monthly_retry_days: Math.max(0, parseInt($("csMonthRetry").value, 10) || 0),
       skip_stale_login: $("csSkipStale").checked,
@@ -1937,9 +1973,9 @@ $("btnCsSave").onclick = async () => {
 const JOB_NAMES = {daily:"日数据", monthly:"月数据", catchup:"评级补采"};
 const MJOB = {rating:"目的地评级", score:"供应商评级"};
 function describeParams(p){
-  if (p.days) return `近 ${p.days} 天`;
-  if (p.month) return p.month + (p.jobs ? "（" + p.jobs.map(j => MJOB[j] || j).join("、") + "）" : "");
-  return JSON.stringify(p);
+  const names = (p.jobs || []).map(j => JOB_NAME[j] || j).join("、");
+  const when = p.days ? `近 ${p.days} 天` : (p.month || "");
+  return names ? `${names} · ${when}` : when || JSON.stringify(p);
 }
 $("btnCsPreview").onclick = async () => {
   const box = $("csPreview");

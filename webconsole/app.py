@@ -1245,6 +1245,12 @@ def api_collect_preview(job: str = "daily") -> JSONResponse:
     job=catchup 时不看今天是否在补采期内，直接按本地库现状算出「现在补会补哪些」。
     """
     cs = _collect_sched()
+    month = csched.month_param(datasync.today_of(_cfg))
+    if job == "daily" and "kylin" not in cs.jobs:
+        return JSONResponse({"job": job, "items": [], "reason": "没勾「交易数据」，日任务不运行"})
+    if job in ("monthly", "catchup") and not cs.month_jobs:
+        return JSONResponse({"job": job, "items": [], "month": month,
+                             "reason": "没勾任何评级表，月任务和评级补采都不运行"})
     if job == "catchup":
         try:
             items, why = _catchup_items(cs, force=True)
@@ -1258,8 +1264,12 @@ def api_collect_preview(job: str = "daily") -> JSONResponse:
 
 @app.post("/api/collect/schedule/catchup")
 async def api_collect_catchup_now() -> JSONResponse:
-    """立即补采一次上月缺失的评级（不受补采期限制）。后台跑，结果看「最近运行」。"""
+    """立即补采一次上月缺失的评级（不受补采期限制）。后台跑，结果看「最近运行」。
+
+    这是手动点的，两个评级表都查，不受定时里勾了哪些表的限制。
+    """
     cs = _collect_sched()
+    cs.jobs = list(csched.ALL_JOBS)
     try:
         items, why = await asyncio.to_thread(_catchup_items, cs, True)
     except Exception as exc:  # noqa: BLE001
