@@ -99,7 +99,6 @@
   .main{display:flex;flex-direction:column;min-width:0;min-height:0}
   .topbar{min-height:108px;flex:none;display:flex;align-items:center;gap:16px;padding:18px 44px 14px 40px}
   .topbar h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.01em;line-height:1.1}
-  .topbar .crumb{color:var(--muted);font-size:12.5px;margin-top:4px}
   .topbar .right{margin-left:auto;display:flex;align-items:center;gap:14px}
   .sched-pill{display:flex;align-items:center;gap:8px;background:#fff;border-radius:20px;padding:7px 14px;
     font-size:12.5px;color:var(--ink-2);box-shadow:0 2px 8px rgba(60,80,170,.06);white-space:nowrap}
@@ -596,7 +595,6 @@
   .topbar{min-height:auto;padding:16px 32px 20px;gap:22px;align-items:center}
   .topbar .ttl{min-width:0}
   .topbar h1{font-size:46px;font-weight:400;letter-spacing:-.025em;line-height:1.05}
-  .topbar .crumb{margin-top:6px}
   .topbar .right{margin-left:auto}
   .ptabs{margin:0;background:#fff;border-radius:24px;padding:4px;box-shadow:var(--soft-shadow)}
   .ptabs:empty{display:none}
@@ -613,8 +611,6 @@
   .tright{justify-self:end}
   .topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:16px;min-height:0;padding:12px 32px 20px}
   .topbar .sub{grid-column:2;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}
-  .topbar .crumb{margin:0;text-align:center;color:var(--muted);font-size:13px;max-width:720px}
-  .topbar .crumb:empty{display:none}
   .topbar .right{grid-column:3;justify-self:end;margin:0}
   .content{padding-top:4px}
 
@@ -744,7 +740,6 @@
     .tnav{display:flex}
     .topbar{display:flex;flex-direction:column;align-items:stretch;padding:8px 16px 14px;gap:10px}
     .topbar .sub{align-items:flex-start}
-    .topbar .crumb{text-align:left}
     .topbar .right:empty,.topbar .right:has(#btnNewTask[style*="none"]){display:none}
     .content{padding:0 16px 30px}
   }
@@ -803,12 +798,11 @@
 
   <!-- ================================================================ 主区 -->
   <main class="main">
-    <!-- 顶部菜单正下方：二级标签 + 本页说明（不再显示大标题） -->
+    <!-- 顶部菜单正下方：二级标签（不显示大标题和说明） -->
     <header class="topbar">
       <h1 class="sr-only" id="pageTitle">总览</h1>
       <div class="sub">
         <div class="ptabs" id="pageTabs"></div>
-        <div class="crumb" id="pageCrumb"></div>
       </div>
       <div class="right">
         <button class="btn btn--white" id="btnNewTask" style="display:none"><svg class="i" style="width:15px;height:15px"><use href="#i-plus"/></svg>新建采集任务</button>
@@ -1449,15 +1443,15 @@ function pills(boxId, items, cur, onPick){
 
 /* ================================================================ 路由 */
 const ROUTES = {
-  "overview":    {title: "总览", crumb: "携程 OTA 采集与推送 · 登录态、采集与推送一览", group: "overview"},
-  "accounts":    {title: "账户管理", crumb: "账号、登录态与远程浏览器；点显示器图标打开浏览器登录", group: "accounts"},
-  "runs":        {title: "任务管理", crumb: "点一行查看运行日志；失败或部分完成的任务可以按原参数重跑", group: "tasks"},
-  "schedule":    {title: "任务管理", crumb: "到点逐个账号采集勾选的表，采完自动推送", group: "tasks"},
-  "sync-tables": {title: "远程同步", crumb: "勾选的字段才会推给下游；表上的改动自动保存。立即推送按各表「回溯」窗口取数。", group: "sync"},
-  "sync-api":    {title: "远程同步", crumb: "下游接口地址、密钥与定时补推策略", group: "sync"},
-  "sync-logs":   {title: "远程同步", crumb: "点一行查看推送日志；保留最近 50 次", group: "sync"},
-  "notify":      {title: "通知管理", crumb: "需要人工验证、登录态失效时通知到人", group: "notify"},
-  "system":      {title: "系统设置", crumb: "运行环境与关键配置", group: "system"},
+  "overview":    {title: "总览", group: "overview"},
+  "accounts":    {title: "账户管理", group: "accounts"},
+  "runs":        {title: "任务管理", group: "tasks"},
+  "schedule":    {title: "任务管理", group: "tasks"},
+  "sync-tables": {title: "远程同步", group: "sync"},
+  "sync-api":    {title: "远程同步", group: "sync"},
+  "sync-logs":   {title: "远程同步", group: "sync"},
+  "notify":      {title: "通知管理", group: "notify"},
+  "system":      {title: "系统设置", group: "system"},
 };
 // 原来的二级菜单改成页内标签
 const TABS = {
@@ -1473,7 +1467,6 @@ function showRoute(r){
   document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === "page-" + r));
   document.querySelectorAll(".rail-item").forEach(b => b.classList.toggle("on", b.dataset.group === meta.group));
   $("pageTitle").textContent = meta.title;
-  $("pageCrumb").textContent = meta.crumb;
   $("pageTabs").innerHTML = (TABS[meta.group] || []).map(([k, t]) =>
     `<button class="${k === r ? "on" : ""}" data-route="${k}">${t}</button>`).join("");
   $("btnNewTask").style.display = meta.group === "tasks" ? "" : "none";   // 只在任务管理里出现
