@@ -41,18 +41,18 @@
   svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* ================================================================ 外框 */
-  .app{display:grid;grid-template-columns:236px minmax(0,1fr);height:calc(100vh - 36px);
+  .app{display:grid;grid-template-columns:196px minmax(0,1fr);height:calc(100vh - 36px);
     background:var(--panel);border-radius:30px;box-shadow:var(--shadow);overflow:hidden}
 
   /* ---- 侧栏 ---- */
   .side{display:flex;flex-direction:column;min-height:0}
-  .logo{height:96px;display:flex;align-items:center;gap:10px;padding:0 30px;flex:none}
-  .logo-mark{width:38px;height:38px;border-radius:50%;background:linear-gradient(140deg,#5B7CFA,#22307A);
+  .logo{height:96px;display:flex;align-items:center;gap:9px;padding:0 20px;flex:none}
+  .logo-mark{width:34px;height:34px;border-radius:50%;background:linear-gradient(140deg,#5B7CFA,#22307A);
     display:grid;place-items:center;box-shadow:0 6px 16px rgba(60,80,200,.35)}
   .logo-mark svg{width:20px;height:20px;stroke:#fff}
   .logo b{font-size:14px;line-height:1.2}
   .logo small{display:block;color:var(--muted);font-size:11px;font-weight:500}
-  .side-body{flex:1;background:var(--primary);border-top-right-radius:56px;padding:30px 0 20px 0;
+  .side-body{flex:1;background:var(--primary);border-top-right-radius:44px;padding:30px 0 18px 0;
     display:flex;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:visible}
   .cta{margin:0 24px 26px;background:#fff;color:var(--primary-d);border:0;border-radius:22px;
     padding:10px 16px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(20,40,140,.25);
@@ -60,29 +60,29 @@
   .cta:hover{transform:translateY(-1px)}
   .nav{list-style:none;margin:0;padding:0}
   .nav > li{position:relative}
-  .nav-item{display:flex;align-items:center;gap:12px;width:calc(100% - 20px);margin-left:20px;
-    padding:11px 16px;border:0;background:none;color:rgba(255,255,255,.82);cursor:pointer;
-    border-radius:26px 0 0 26px;text-align:left;font-size:14px;font-weight:500;letter-spacing:.01em}
+  .nav-item{display:flex;align-items:center;gap:10px;width:calc(100% - 14px);margin-left:14px;
+    padding:9px 12px;border:0;background:none;color:rgba(255,255,255,.82);cursor:pointer;
+    border-radius:24px 0 0 24px;text-align:left;font-size:13.5px;font-weight:500;letter-spacing:.01em}
   .nav-item:hover{color:#fff;background:rgba(255,255,255,.08)}
-  .nav-item .bubble{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none}
+  .nav-item .bubble{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none}
   .nav-item.on{background:rgba(255,255,255,.2);color:#fff;font-weight:700}
   .nav-item.on .bubble{background:#fff;color:var(--primary)}
   .nav-item .badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--orange);
     color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
   .nav-item .badge:empty{display:none}
-  .sub{list-style:none;margin:2px 0 6px 0;padding:0 0 0 64px}
+  .sub{list-style:none;margin:2px 0 6px 0;padding:0 0 0 52px}
   .sub button{display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;
     color:rgba(255,255,255,.7);padding:6px 10px;font-size:13px;border-radius:8px 0 0 8px}
   .sub button:hover{color:#fff}
   .sub button.on{color:#fff;font-weight:700}
   .sub button.on::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#fff;
     margin:0 8px 2px -14px}
-  .side-foot{margin-top:auto;padding:16px 24px 0;color:rgba(255,255,255,.75);font-size:12px}
+  .side-foot{margin-top:auto;padding:16px 18px 0;color:rgba(255,255,255,.75);font-size:11.5px}
   .side-foot b{color:#fff;font-weight:600}
 
   /* ---- 主区 ---- */
   .main{display:flex;flex-direction:column;min-width:0;min-height:0}
-  .topbar{height:96px;flex:none;display:flex;align-items:center;gap:16px;padding:0 40px 0 44px}
+  .topbar{height:96px;flex:none;display:flex;align-items:center;gap:16px;padding:0 40px 0 36px}
   .topbar h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.01em;line-height:1.1}
   .topbar .crumb{color:var(--muted);font-size:12.5px;margin-top:4px}
   .topbar .right{margin-left:auto;display:flex;align-items:center;gap:14px}
@@ -97,7 +97,7 @@
   .icon-btn .dotn:empty{display:none}
   .avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(140deg,#FFB27A,#FF6A13);color:#fff;
     display:grid;place-items:center;font-weight:800;font-size:14px}
-  .content{flex:1;overflow-y:auto;padding:0 40px 40px 44px;min-height:0}
+  .content{flex:1;overflow-y:auto;padding:0 40px 40px 36px;min-height:0}
   .page{display:none}
   .page.on{display:block}
 
@@ -222,7 +222,7 @@
   .seg button[aria-pressed="true"]{background:#fff;color:var(--primary-d);box-shadow:0 2px 6px rgba(60,80,170,.12)}
   .section-t{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:18px 0 10px}
   .section-t:first-child{margin-top:0}
-  .savebar{position:sticky;bottom:-40px;margin:0 -44px -40px -44px;padding:14px 44px 18px;background:linear-gradient(transparent,var(--panel) 30%);
+  .savebar{position:sticky;bottom:-40px;margin:0 -40px -40px -36px;padding:14px 40px 18px 36px;background:linear-gradient(transparent,var(--panel) 30%);
     display:flex;gap:10px;align-items:center;flex-wrap:wrap;z-index:4}
 
   details.more > summary{cursor:pointer;color:var(--primary-d);font-size:13px;font-weight:600;list-style:none;margin:10px 0 8px;user-select:none}
@@ -383,7 +383,6 @@
       <div><b>携程采集</b><small>OTA 运营控制台</small></div>
     </div>
     <div class="side-body">
-      <button class="cta" id="btnNewTask"><svg class="i" style="width:15px;height:15px"><use href="#i-plus"/></svg>新建采集任务</button>
       <ul class="nav">
         <li><button class="nav-item" data-route="accounts"><span class="bubble"><svg class="i"><use href="#i-user"/></svg></span>账户管理<span class="badge" id="badgeAcct"></span></button></li>
         <li>
@@ -412,6 +411,7 @@
     <header class="topbar">
       <div><h1 id="pageTitle">账户管理</h1><div class="crumb" id="pageCrumb"></div></div>
       <div class="right">
+        <button class="btn btn--primary" id="btnNewTask" style="display:none;border-radius:20px;padding:9px 18px"><svg class="i" style="width:15px;height:15px"><use href="#i-plus"/></svg>新建采集任务</button>
         <div class="sched-pill" title="定时采集与补推的调度线程"><span class="dot" id="schedDot"></span><span id="schedText">调度 —</span></div>
         <div style="position:relative">
           <button class="icon-btn" id="btnBell" title="需要处理的事项"><svg class="i"><use href="#i-bell"/></svg><span class="dotn" id="bellN"></span></button>
@@ -942,6 +942,7 @@ function showRoute(r){
   document.querySelectorAll(".sub").forEach(u => u.style.display = u.dataset.group === meta.group ? "" : "none");
   document.querySelectorAll(".sub button").forEach(b => b.classList.toggle("on", b.dataset.route === r));
   $("pageTitle").textContent = meta.title;
+  $("btnNewTask").style.display = meta.group === "tasks" ? "" : "none";   // 只在任务管理页出现
   $("pageCrumb").textContent = meta.crumb;
   ({accounts: loadAccounts, runs: loadRuns, schedule: () => { loadCollectSchedule(); loadStatus(); },
     "sync-tables": loadSync, "sync-api": loadSync, "sync-logs": loadStatus, notify: loadSettings})[r]?.();
@@ -1618,7 +1619,7 @@ function renderRuns(){
         </div>
       </div>
     </div>`).join("")
-    : `<div class="dt-empty">没有运行记录。点左上角「新建采集任务」开始。</div>`;
+    : `<div class="dt-empty">没有运行记录。点右上角「新建采集任务」开始。</div>`;
   shown.filter(r => opened.runRows.has(r.run_id) && r.has_log &&
     (!tailCache[r.run_id] || ["queued","running"].includes(r.status))).forEach(r => loadTail(r));
 }
