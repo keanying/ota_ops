@@ -130,6 +130,9 @@ def rc_text(rc: int | None) -> str:
 
 
 _EMPTY_JOB_RE = re.compile(r"任务 (\w+) 未采集到数据")
+# CLI 采集汇总里每张表一行：…  score   success      20    20    20     0  目标
+_JOB_RESULT_RE = re.compile(r"\s(kylin|rating|score)\s+(success|partial|failed|skipped|pending)\s+"
+                            r"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)")
 # 登录失败跳过账号时 CLI 打的那一行，取原因放进运行记录的说明里
 _LOGIN_FAIL_RE = re.compile(r"登录失败，跳过该账号：(.+)$")
 
@@ -230,7 +233,10 @@ class CollectTask:
         self.source = source             # manual / schedule / catchup / login
         self.empty_jobs: list[str] = []  # 跑了但上游没数据的任务（如 rating 还没出）
         self.login_error = ""            # 登录失败跳过时的原因
-        self.job = "day"
+        self.job = "day"                 # day / month / mixed
+        self.jobs: list[str] = []        # 采哪几张表：kylin / rating / score
+        self.job_results: dict = {}      # 每张表的结果（从 CLI 汇总里解析）
+        self.sync_windows: dict = {}     # 采集后推送的窗口：daily / monthly
         self.params: dict = {}           # 发起参数，「重跑」用
         self.sync_window: tuple[str, str] | None = None
         self.entries: list[dict] = []
@@ -278,6 +284,7 @@ class CollectTask:
             "detail": (self.skip_reason or self.login_error
                        or self.empty_detail().strip("（）")),
             "rc": self.rc, "mode": self.job, "params": self.params,
+            "jobs": self.jobs, "job_results": self.job_results,
             "created_at": self.created_at.strftime(fmt),
             "started_at": self.started_at.strftime(fmt) if self.started_at else "",
             "finished_at": self.finished_at.strftime(fmt) if self.finished_at else "",
@@ -325,6 +332,8 @@ class CollectTask:
         env["PYTHONIOENCODING"] = "utf-8"
         # 让 CLI 认得出「占用 profile 的就是控制台自己」，给出该去弹窗里登录的提示
         env["CTRIP_CONSOLE_PID"] = str(os.getpid())
+        if self.jobs:
+            self._push("info", "采集内容：" + "、".join(JOB_NAME.get(j, j) for j in self.jobs))
         self._push("info", f"$ {' '.join(self.argv)}")
         try:
             self.proc = subprocess.Popen(
@@ -345,6 +354,11 @@ class CollectTask:
                 hit = _EMPTY_JOB_RE.search(line)
                 if hit and hit.group(1) not in self.empty_jobs:
                     self.empty_jobs.append(hit.group(1))
+                res = _JOB_RESULT_RE.search(line)
+                if res:
+                    self.job_results[res.group(1)] = {
+                        "status": res.group(2), "fetched": int(res.group(3)),
+                        "written": int(res.group(4))}
                 fail = _LOGIN_FAIL_RE.search(line)
                 if fail and not self.login_error:
                     self.login_error = "登录失败：" + fail.group(1)[:300]
@@ -353,6 +367,11 @@ class CollectTask:
                 self._push(level, line)
         self.rc = self.proc.wait()
         text = "已停止" if self.stopped else rc_text(self.rc)
+        if self.job_results:
+            st = {"success": "成功", "partial": "部分完成", "failed": "失败", "skipped": "跳过"}
+            self._push("info", "各表结果：" + "；".join(
+                f"{JOB_NAME.get(j, j)} {st.get(r['status'], r['status'])}，采集 {r['fetched']} 行，写入 {r['written']} 行"
+                for j, r in self.job_results.items()))
         self._push("done", f"{self.label} {text}{self.empty_detail()}", rc=self.rc)
         if self.on_done and not self.stopped:
             # 采集完成的后续动作（推 API）单独兜异常：
@@ -420,9 +439,11 @@ def launch_collect(account_id: str, mode: str, params: dict, source: str = "manu
     """建一个采集任务并登记。start=False 时只排队（批量任务用）。"""
     label, argv = build_collect_argv(account_id, mode, params)
     task = CollectTask(account_id, label, argv, on_done=_after_collect_push, source=source)
-    task.job = mode
-    task.params = dict(params)
-    task.sync_window = _sync_window_of(mode, params)
+    task.jobs = task_jobs(mode, params)
+    task.job = mode_of(task.jobs)
+    task.params = {**params, "jobs": task.jobs}
+    task.sync_windows = _sync_windows(mode, params)
+    task.sync_window = next(iter(task.sync_windows.values()), None)
     _register(task)
     if start:
         _tasks[account_id] = task
@@ -464,80 +485,131 @@ def _after_collect_push(task: "CollectTask") -> None:
     if not (sc.enabled and sc.after_collect and sc.url):
         return
 
-    job = "daily" if task.job == "day" else "monthly"
-    window = task.sync_window
-    sj = SyncJob(f"采集后推送 · {task.account_id} · {task.label}", "after_collect",
-                 mirror=lambda lv, m: task._push(lv, m))
-    task._push("info", f"开始推送到下游接口（{job}{'，窗口 ' + '~'.join(window) if window else ''}），"
-                       f"推送日志编号 {sj.id}")
-    try:
-        result = sj.run(job=job, account_ids=[task.account_id], window=window, sc=sc)
-        if result is None:
-            task._push("error", f"推送下游失败（数据已入库，可稍后重推）：{sj.error}")
-            return
-        for item in result.get("tables", {}).values():
-            if item["ok"]:
-                task._push("info", f"→ {item['remote_table']}：{item['rows']} 行，"
-                                   f"新增 {item['inserted']}，更新 {item['updated']}")
+    windows = task.sync_windows or ({("daily" if task.job == "day" else "monthly"): task.sync_window}
+                                     if task.sync_window else {})
+    jobs = task.jobs or task_jobs(task.job, task.params)
+    for gran, window in windows.items():
+        gran_jobs = [j for j in jobs if (j in DAY_JOBS) == (gran == "daily")]
+        push, skip = [], []
+        for j in gran_jobs:
+            res = task.job_results.get(j, {})
+            if j in task.empty_jobs or res.get("written") == 0:
+                skip.append(f"{JOB_NAME[j]}（本次没采到数据）")
+            elif res.get("status") in ("failed", "skipped"):
+                skip.append(f"{JOB_NAME[j]}（采集失败）")
+            elif not sc.tables[JOB_TABLE[j]].enabled:
+                skip.append(f"{JOB_NAME[j]}（远程同步里没勾「参与同步」）")
             else:
-                # 推送失败时必须说清楚数据已经落在本地库里 —— 否则看到红字的人
-                # 第一反应是这次采集白跑了，会去重采一遍
-                task._push("error",
-                           f"→ {item['remote_table']} 推送失败：{item['error']}"
-                           f"（数据已入库，可在「远程同步」手动重推）")
-    except Exception as exc:  # noqa: BLE001
-        task._push("error", f"推送下游失败（数据已入库，可稍后重推）：{exc}")
+                push.append(j)
+        if skip:
+            task._push("info", "不推送：" + "、".join(skip))
+        if not push:
+            continue
+        names = "、".join(JOB_NAME[j] for j in push)
+        sj = SyncJob(f"采集后推送 · {task.account_id} · {names}", "after_collect",
+                     mirror=lambda lv, m: task._push(lv, m))
+        task._push("info", f"开始推送 {names} 到下游（窗口 {'~'.join(window)}），推送日志编号 {sj.id}")
+        try:
+            result = sj.run(job="all", tables=[JOB_TABLE[j] for j in push],
+                            account_ids=[task.account_id], window=window, sc=sc)
+            if result is None:
+                task._push("error", f"推送 {names} 失败（数据已入库，可稍后重推）：{sj.error}")
+                continue
+            for item in result.get("tables", {}).values():
+                tag = datasync.TABLE_LABEL.get(item.get("key", ""), item["remote_table"])
+                if item["ok"]:
+                    task._push("done", f"→ {tag}（{item['remote_table']}）推送 {item['rows']} 行，"
+                                       f"新增 {item['inserted']}，更新 {item['updated']}")
+                else:
+                    # 推送失败时必须说清楚数据已经落在本地库里 —— 否则看到红字的人
+                    # 第一反应是这次采集白跑了，会去重采一遍
+                    task._push("error", f"→ {tag}（{item['remote_table']}）推送失败：{item['error']}"
+                                        f"（数据已入库，可在「远程同步」手动重推）")
+        except Exception as exc:  # noqa: BLE001
+            task._push("error", f"推送 {names} 失败（数据已入库，可稍后重推）：{exc}")
 
 
 def _python() -> str:
     return sys.executable or "python"
 
 
+# 三张表 ↔ CLI 的 --job 名 ↔ 本地表 key
+JOB_ORDER = ("kylin", "rating", "score")
+JOB_NAME = {"kylin": "交易数据", "rating": "目的地评级", "score": "供应商评级"}
+JOB_TABLE = {"kylin": "kylin_daily", "rating": "destination_rating", "score": "supplier_rate_score"}
+DAY_JOBS = ("kylin",)
+MONTH_JOBS = ("rating", "score")
+
+
+def task_jobs(mode: str, params: dict) -> list[str]:
+    """这次采哪几张表。params.jobs 优先；没给就按 mode 的老口径（日 = 交易，月 = 两个评级）。"""
+    jobs = [j for j in (params.get("jobs") or []) if j in JOB_NAME]
+    if not jobs:
+        jobs = {"day": list(DAY_JOBS), "month": list(MONTH_JOBS),
+                "mixed": list(JOB_ORDER)}.get(mode, [])
+    return [j for j in JOB_ORDER if j in jobs]
+
+
+def mode_of(jobs: list[str]) -> str:
+    has_day = any(j in DAY_JOBS for j in jobs)
+    has_month = any(j in MONTH_JOBS for j in jobs)
+    return "mixed" if has_day and has_month else ("day" if has_day else "month")
+
+
 def build_collect_argv(account_id: str, mode: str, params: dict) -> tuple[str, list[str]]:
-    """把页面参数翻译成项目 CLI 的命令行。"""
+    """把页面参数翻译成项目 CLI 的命令行。
+
+    一次可以同时采日表和月表（CLI 本身支持多个 --job，日期与月份参数各管各的），
+    标签里写清楚采了哪几张表，运行记录和日志里一眼能看出来。
+    """
+    jobs = task_jobs(mode, params)
+    if not jobs:
+        raise HTTPException(400, "至少选一张表")
     argv = [_python(), "-m", "ctrip.cli", "collect", "--account-id", account_id]
     # 落地固定走 MySQL：本地直写；推给下游由控制台在采集完成后单独调 API。
-    # CSV 不再作为选项——它既不是落库也不是上报，留着只会让人选错。
     argv += ["--sink", "mysql"]
     if params.get("write_mode"):
         argv += ["--write-mode", params["write_mode"]]
+    for j in jobs:
+        argv += ["--job", j]
 
-    if mode == "day":
-        argv += ["--job", "kylin"]
+    when = []
+    if any(j in DAY_JOBS for j in jobs):
         if params.get("start_date") and params.get("end_date"):
-            argv += ["--start-date", params["start_date"],
-                     "--end-date", params["end_date"]]
-            label = f"日数据 {params['start_date']}~{params['end_date']}"
+            argv += ["--start-date", params["start_date"], "--end-date", params["end_date"]]
+            when.append(f"{params['start_date']}~{params['end_date']}")
         elif params.get("end_date"):
             argv += ["--end-date", params["end_date"]]
-            label = f"日数据 至 {params['end_date']}"
+            when.append(f"至 {params['end_date']}")
         else:
             days = int(params.get("days") or 1)
             argv += ["--days", str(days)]
-            label = f"日数据 近 {days} 天"
-    elif mode == "month":
-        # jobs 可只采其中一类（评级补采时只补缺的那张表）
-        jobs = [j for j in (params.get("jobs") or ["rating", "score"])
-                if j in ("rating", "score")] or ["rating", "score"]
-        for j in jobs:
-            argv += ["--job", j]
-        only = ("" if len(jobs) == 2
-                else "（" + "、".join(csched.JOB_LABELS[j] for j in jobs) + "）")
+            when.append(f"近 {days} 天")
+    if any(j in MONTH_JOBS for j in jobs):
         if params.get("start_month") and params.get("end_month"):
-            argv += ["--start-month", params["start_month"],
-                     "--end-month", params["end_month"]]
-            label = f"月数据 {params['start_month']}~{params['end_month']}{only}"
+            argv += ["--start-month", params["start_month"], "--end-month", params["end_month"]]
+            when.append(f"{params['start_month']}~{params['end_month']}")
         elif params.get("month"):
             argv += ["--month", params["month"]]
-            label = f"月数据 {params['month']}{only}"
+            when.append(params["month"])
         else:
-            label = f"月数据 上个月{only}"
-    else:
-        raise HTTPException(400, f"未知采集类型：{mode}")
+            when.append("上个月")
 
     if params.get("skip_login"):
         argv.append("--skip-login")
+    label = "、".join(JOB_NAME[j] for j in jobs) + " · " + " / ".join(when)
     return label, argv
+
+
+def _sync_windows(mode: str, params: dict) -> dict[str, tuple[str, str]]:
+    """采集后推送用的窗口，日表、月表各一个（只含这次采了的那类）。"""
+    jobs = task_jobs(mode, params)
+    out = {}
+    if any(j in DAY_JOBS for j in jobs):
+        out["daily"] = _sync_window_of("day", params)
+    if any(j in MONTH_JOBS for j in jobs):
+        out["monthly"] = _sync_window_of("month", params)
+    return out
 
 
 def _sync_window_of(mode: str, params: dict) -> tuple[str, str] | None:
@@ -982,7 +1054,7 @@ async def api_runs_create(payload: dict) -> JSONResponse:
     """
     payload = payload or {}
     mode = payload.get("mode") or "day"
-    if mode not in ("day", "month"):
+    if mode not in ("day", "month", "mixed"):
         raise HTTPException(400, f"未知采集类型：{mode}")
     params = dict(payload.get("params") or {})
     known = {a.account_id for a in _cfg.ctrip.accounts}
@@ -1022,7 +1094,7 @@ async def api_run_rerun(run_id: str) -> JSONResponse:
     if summary is None:
         raise HTTPException(404, "运行记录不存在")
     mode = summary.get("mode")
-    if mode not in ("day", "month"):
+    if mode not in ("day", "month", "mixed"):
         raise HTTPException(400, "这条记录没有保存采集参数（跳过记录或旧版本记录），请新建任务")
     aid = summary["account_id"]
     if aid not in {a.account_id for a in _cfg.ctrip.accounts}:
@@ -1322,7 +1394,8 @@ class SyncJob:
                 "duration": round((end - self.started_at).total_seconds(), 1)
                             if self.started_at else 0,
                 "lines": len(self.entries),
-                "tables": [{"table": t.get("remote_table") or t.get("table"), "rows": t.get("rows", 0),
+                "tables": [{"table": t.get("remote_table") or t.get("table"), "label": t.get("label", ""),
+                            "rows": t.get("rows", 0),
                             "ok": t.get("ok"), "error": t.get("error", "")}
                            for t in ((self.result or {}).get("tables") or {}).values()]}
 

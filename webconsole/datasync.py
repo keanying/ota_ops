@@ -50,6 +50,10 @@ DEFAULT_PK = {
 # 没单独选过字段的表默认不推它们（推了下游会报「含未登记字段 create_time」）
 LOCAL_ONLY_FIELDS = ("collect_time", "create_time", "update_time")
 
+# 页面 / 日志里给人看的表名
+TABLE_LABEL = {"kylin_daily": "交易数据", "destination_rating": "目的地评级",
+               "supplier_rate_score": "供应商评级"}
+
 # 哪些表归日同步、哪些归月同步
 DAILY_TABLES = ("kylin_daily",)
 MONTHLY_TABLES = ("destination_rating", "supplier_rate_score")
@@ -446,7 +450,8 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
             pk = [ts.remote_name(c) for c in local_pk]
             # 下游表名可与本地表名不同（对方库里叫什么由对方定），留空才用本地表名
             remote = ts.remote_table or schema.name
-            item = {"table": schema.name, "remote_table": remote,
+            tag = TABLE_LABEL.get(key, schema.name)
+            item = {"key": key, "label": tag, "table": schema.name, "remote_table": remote,
                     "pk": pk, "fields": len(columns), "rows": 0, "batches": 0,
                     "inserted": 0, "updated": 0, "ok": True, "error": ""}
             try:
@@ -461,7 +466,7 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
                 if ts.aliases:
                     rows = [{ts.remote_name(k): v for k, v in r.items()} for r in rows]
                 item.update(rows=len(rows), window=f"{low} ~ {high}")
-                emit(f"[{schema.name} → {remote}] 窗口 {low} ~ {high}，"
+                emit(f"[{tag}] {schema.name} → {remote}，窗口 {low} ~ {high}，"
                      f"取到 {len(rows)} 行")
                 if not rows:
                     result["tables"][key] = item
@@ -470,7 +475,7 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
                     item["batches"] = (len(rows) + sc.batch_size - 1) // sc.batch_size
                     # 给页面看实际报文长什么样
                     item["sample"] = {"tableName": remote, "pkId": pk, "data": rows[:2]}
-                    emit(f"[{schema.name}] 试运行，不实际推送"
+                    emit(f"[{tag}] 试运行，不实际推送"
                          f"（将分 {item['batches']} 批）")
                     result["tables"][key] = item
                     continue
@@ -483,18 +488,18 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
                     ins, upd = int(data.get("inserted") or 0), int(data.get("updated") or 0)
                     item["inserted"] += ins
                     item["updated"] += upd
-                    emit(f"[{remote}] 第 {item['batches']}/{total} 批 {len(chunk)} 行："
+                    emit(f"[{tag}] 第 {item['batches']}/{total} 批 {len(chunk)} 行："
                          f"新增 {ins}，更新 {upd}")
-                emit(f"[{remote}] 推送完成：{item['batches']} 批，"
+                emit(f"[{tag}] 推送完成：{item['batches']} 批，"
                      f"新增 {item['inserted']}，更新 {item['updated']}")
             except Exception as exc:  # noqa: BLE001
                 ok_all = False
                 item.update(ok=False, error=str(exc))
-                emit(f"[{schema.name}] 失败：{exc}", "error")
+                emit(f"[{tag}] 失败：{exc}", "error")
                 hint = _unregistered_hint(str(exc), [ts.remote_name(c) for c in columns])
                 if hint:
                     item["error"] += f"；{hint}"
-                    emit(f"[{schema.name}] {hint}", "error")
+                    emit(f"[{tag}] {hint}", "error")
             result["tables"][key] = item
     finally:
         _running.release()

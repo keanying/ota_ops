@@ -220,6 +220,19 @@
   .seg{display:inline-flex;background:#F0F3FB;border-radius:10px;padding:3px}
   .seg button{border:0;background:none;padding:6px 14px;cursor:pointer;color:var(--ink-2);font-size:13px;border-radius:8px;font-weight:600}
   .seg button[aria-pressed="true"]{background:#fff;color:var(--primary-d);box-shadow:0 2px 6px rgba(60,80,170,.12)}
+  .tiles{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .tile{text-align:left;border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px 10px 34px;
+    cursor:pointer;position:relative;color:var(--ink)}
+  .tile::before{content:"";position:absolute;left:11px;top:13px;width:14px;height:14px;border-radius:4px;border:1.5px solid #C3CADC;background:#fff}
+  .tile[aria-pressed="true"]{border-color:var(--primary);background:var(--primary-50)}
+  .tile[aria-pressed="true"]::before{background:var(--primary) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;border-color:var(--primary)}
+  .tile b{display:block;font-size:13.5px}
+  .tile small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+  .tile .tbl{display:block;color:var(--muted);font-size:10.5px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .jchips{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}
+  .jchip{font-size:11px;font-weight:600;padding:0 7px;border-radius:9px;background:#EEF1F7;color:var(--ink-2);white-space:nowrap}
+  .jchip.ok{background:var(--ok-50);color:var(--ok)} .jchip.warn{background:var(--warn-50);color:#B26A00}
+  .jchip.bad{background:var(--bad-50);color:var(--bad)} .jchip.info{background:var(--info-50);color:var(--primary-d)}
   .section-t{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:18px 0 10px}
   .section-t:first-child{margin-top:0}
   .savebar{position:sticky;bottom:-40px;margin:0 -40px -40px -36px;padding:14px 40px 18px 36px;background:linear-gradient(transparent,var(--panel) 30%);
@@ -334,6 +347,7 @@
   #ime{position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0}
 
   @media (max-width:1100px){.cols2,.cols3{grid-template-columns:1fr}}
+  @media (max-width:700px){.tiles{grid-template-columns:1fr}}
   @media (max-width:900px){
     body{padding:0}
     .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:100vh;border-radius:0}
@@ -747,7 +761,7 @@
 
 <!-- ================================================================ 新建任务 -->
 <div class="modal" id="mTask">
-  <div class="dlg" style="width:660px">
+  <div class="dlg" style="width:720px">
     <div class="dlg-hd"><h3>新建采集任务</h3><button class="x" data-close="mTask">×</button></div>
     <div class="dlg-bd">
       <div class="field" style="align-items:flex-start"><label style="padding-top:4px">账号</label>
@@ -760,12 +774,17 @@
           <div id="tAccounts" style="max-height:180px;overflow-y:auto;background:var(--soft);border-radius:10px;padding:6px 12px"></div>
         </div>
       </div>
-      <div class="field"><label>采集内容</label>
-        <div class="seg" id="tMode">
-          <button aria-pressed="true" data-v="day">日数据（交易）</button>
-          <button aria-pressed="false" data-v="month">月数据（评级）</button>
+      <div class="field" style="align-items:flex-start"><label style="padding-top:10px">采集哪些表</label>
+        <div class="tiles" id="tTables">
+          <button type="button" class="tile" data-job="kylin" aria-pressed="true">
+            <b>交易数据</b><small>按天 · 成交额、订单、票量</small><span class="tbl mono">ads_sup_ota_ctrip_trade_di</span></button>
+          <button type="button" class="tile" data-job="rating" aria-pressed="true">
+            <b>目的地评级</b><small>按月 · AI 分析文本</small><span class="tbl mono">ads_sup_ota_ctrip_destination_rating_di</span></button>
+          <button type="button" class="tile" data-job="score" aria-pressed="true">
+            <b>供应商评级</b><small>按月 · 各目的地服务分</small><span class="tbl mono">ads_sup_ota_ctrip_score_di</span></button>
         </div></div>
       <div id="tDay">
+        <div class="section-t" style="margin:4px 0 10px 102px">交易数据的时间（按天）</div>
         <div class="field"><label>时间</label>
           <div class="seg" id="tDayHow">
             <button aria-pressed="true" data-v="days">最近 N 天</button>
@@ -780,7 +799,8 @@
           <p class="note" style="margin:-6px 0 12px 102px">长区间会自动按 30 天分批。</p>
         </div>
       </div>
-      <div id="tMonth" style="display:none">
+      <div id="tMonth">
+        <div class="section-t" style="margin:4px 0 10px 102px">评级的时间（按月）</div>
         <div class="field"><label>时间</label>
           <div class="seg" id="tMonthHow">
             <button aria-pressed="true" data-v="one">单月</button>
@@ -789,9 +809,6 @@
         <div class="field" id="tOneRow"><label></label><input id="tMonthVal" type="month"><span class="unit">留空 = 上个月</span></div>
         <div class="field" id="tMRangeRow" style="display:none"><label></label>
           <input id="tMStart" type="month"><span class="unit">至</span><input id="tMEnd" type="month"></div>
-        <div class="field"><label>采哪些</label>
-          <label class="check" style="margin:0 14px 0 0"><input type="checkbox" id="tRating" checked> 目的地评级</label>
-          <label class="check" style="margin:0"><input type="checkbox" id="tScore" checked> 供应商评级</label></div>
         <p class="note" style="margin:-6px 0 12px 102px">月初目的地评级常常还没出上月数据，会显示「部分完成」，已采到的照常入库推送。</p>
       </div>
       <details class="more">
@@ -1596,7 +1613,7 @@ function renderRuns(){
       <div class="dt-main">
         <span class="mono" style="font-weight:600">${esc(r.created_at.slice(5, 16))}</span>
         <span class="ellip">${esc(acctName(r.account_id))}<span class="sub2 mono">${esc(r.account_id)}</span></span>
-        <span class="ellip">${esc(r.label)}${r.detail ? `<span class="sub2 ellip">${esc(r.detail)}</span>` : ""}</span>
+        <span class="ellip">${esc(r.label)}${jobChips(r)}</span>
         <span style="font-weight:500">${esc(SRC[r.source] || r.source)}</span>
         <span class="mono" style="font-weight:500">${fmtDur(r.duration)}</span>
         <span><span class="tag ${RUN_CLS[r.status] || ""}">${r.status === "running" ? '<span class="dot info beat"></span>' : ""}${esc(r.status_text)}</span></span>
@@ -1608,6 +1625,9 @@ function renderRuns(){
           <div class="kv"><span>结束</span><b class="mono">${esc(r.finished_at || "—")}</b></div>
           <div class="kv"><span>参数</span><b class="mono">${esc(describeRun(r))}</b></div>
           <div class="kv"><span>日志</span><b>${r.has_log ? `${r.lines} 行` : "无"}</b></div>
+          ${Object.entries(r.job_results || {}).map(([j, x]) => `<div class="kv"><span>${JOB_NAME[j] || j}</span>
+            <b style="color:${x.status === "failed" ? "var(--bad)" : !x.written ? "#B26A00" : "var(--ok)"}">${
+              x.status === "failed" ? "失败" : !x.written ? "无数据" : x.status === "partial" ? "部分完成" : "成功"} · 采集 ${x.fetched} / 写入 ${x.written}</b></div>`).join("")}
         </div>
         ${r.detail ? `<p class="note" style="margin:-4px 0 12px;color:${r.status === "failed" ? "var(--bad)" : "var(--ink-2)"}">${esc(r.detail)}</p>` : ""}
         ${r.has_log ? `<div class="tail" data-tail="${esc(r.run_id)}">${tailCache[r.run_id] || '<span style="color:#6E7891">加载最近日志…</span>'}</div>` : ""}
@@ -1623,14 +1643,26 @@ function renderRuns(){
   shown.filter(r => opened.runRows.has(r.run_id) && r.has_log &&
     (!tailCache[r.run_id] || ["queued","running"].includes(r.status))).forEach(r => loadTail(r));
 }
+const JST = {success: ["ok", "✓"], partial: ["warn", "部分"], failed: ["bad", "✗"], skipped: ["", "跳过"], pending: ["", "…"]};
+function jobChips(r){
+  const jobs = r.jobs && r.jobs.length ? r.jobs : (r.mode === "day" ? ["kylin"] : r.mode === "month" ? ((r.params || {}).jobs || ["rating","score"]) : []);
+  if (!jobs.length) return "";
+  const res = r.job_results || {};
+  return `<span class="jchips">${jobs.map(j => {
+    const x = res[j];
+    if (!x) return `<span class="jchip ${["queued","running"].includes(r.status) ? "info" : ""}">${JOB_NAME[j] || j}</span>`;
+    const [cls, mark] = JST[x.status] || ["", x.status];
+    const empty = x.status !== "failed" && !x.written;
+    return `<span class="jchip ${empty ? "warn" : cls}" title="采集 ${x.fetched} 行，写入 ${x.written} 行">${JOB_NAME[j] || j} ${empty ? "无数据" : mark + " " + x.written}</span>`;
+  }).join("")}</span>`;
+}
 function describeRun(r){
   const p = r.params || {};
-  if (r.mode === "day") return p.start_date ? `${p.start_date} ~ ${p.end_date}` : (p.days ? `最近 ${p.days} 天` : "—");
-  if (r.mode === "month"){
-    const which = p.jobs ? "（" + p.jobs.map(j => ({rating:"目的地评级", score:"供应商评级"})[j] || j).join("、") + "）" : "";
-    return (p.start_month ? `${p.start_month} ~ ${p.end_month}` : (p.month || "上个月")) + which;
-  }
-  return "—";
+  const out = [];
+  const jobs = r.jobs || p.jobs || (r.mode === "day" ? ["kylin"] : ["rating","score"]);
+  if (jobs.includes("kylin")) out.push("交易 " + (p.start_date ? `${p.start_date} ~ ${p.end_date}` : (p.days ? `最近 ${p.days} 天` : "—")));
+  if (jobs.some(j => j !== "kylin")) out.push("评级 " + (p.start_month ? `${p.start_month} ~ ${p.end_month}` : (p.month || "上个月")));
+  return out.join(" / ") || "—";
 }
 async function loadTail(r){
   try {
@@ -1708,7 +1740,7 @@ async function pollRunLog(){
   catch (e){ $("lTag").textContent = e.message; $("lTag").className = "tag bad"; return; }
   if (id !== logRun) return;
   const r = d.run;
-  $("lTitle").textContent = `${acctName(r.account_id)} · ${r.label}`;
+  $("lTitle").innerHTML = `${esc(acctName(r.account_id))} · ${esc(r.label)}${jobChips(r)}`;
   $("lTag").textContent = r.status_text; $("lTag").className = "tag " + (RUN_CLS[r.status] || "");
   $("lMeta").innerHTML = metaHtml([["账号", r.account_id], ["来源", SRC[r.source] || r.source],
     ["开始", r.started_at || "—"], ["结束", r.finished_at || "—"], ["耗时", fmtDur(r.duration)]])
@@ -1783,6 +1815,7 @@ function openTaskDialog(preselect){
       <span class="tag ${stateCls(a)}">${stateOf(a)}</span>${a.task ? ' <span class="tag info">采集中</span>' : ""}
     </label>`).join("") : '<p class="note">还没有账号</p>';
   $("tMonthVal").placeholder = lastMonth();
+  syncTaskSections();
   updateTaskSummary();
   openModal("mTask");
 }
@@ -1792,49 +1825,58 @@ $("tPickFresh").onclick = () => pickAccts(a => a.is_fresh && a.status !== "disab
 $("tPickAll").onclick = () => pickAccts(() => true);
 $("tPickNone").onclick = () => pickAccts(() => false);
 $("tAccounts").addEventListener("change", updateTaskSummary);
-for (const [segId, fn] of [["tMode", (v) => { $("tDay").style.display = v === "day" ? "" : "none"; $("tMonth").style.display = v === "month" ? "" : "none"; }],
-                           ["tDayHow", (v) => { $("tDaysRow").style.display = v === "days" ? "" : "none"; $("tRangeRow").style.display = v === "range" ? "" : "none"; }],
+const pickedJobs = () => [...$("tTables").querySelectorAll('.tile[aria-pressed="true"]')].map(t => t.dataset.job);
+function syncTaskSections(){
+  const jobs = pickedJobs();
+  $("tDay").style.display = jobs.includes("kylin") ? "" : "none";
+  $("tMonth").style.display = jobs.some(j => j !== "kylin") ? "" : "none";
+}
+$("tTables").addEventListener("click", (e) => {
+  const t = e.target.closest(".tile"); if (!t) return;
+  t.setAttribute("aria-pressed", String(t.getAttribute("aria-pressed") !== "true"));
+  syncTaskSections(); updateTaskSummary();
+});
+for (const [segId, fn] of [["tDayHow", (v) => { $("tDaysRow").style.display = v === "days" ? "" : "none"; $("tRangeRow").style.display = v === "range" ? "" : "none"; }],
                            ["tMonthHow", (v) => { $("tOneRow").style.display = v === "one" ? "" : "none"; $("tMRangeRow").style.display = v === "range" ? "" : "none"; }]]){
   $(segId).addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     setSeg($(segId), b.dataset.v); fn(b.dataset.v); updateTaskSummary();
   });
 }
-["tDays","tStart","tEnd","tMonthVal","tMStart","tMEnd","tRating","tScore"].forEach(id => $(id).addEventListener("input", updateTaskSummary));
+["tDays","tStart","tEnd","tMonthVal","tMStart","tMEnd"].forEach(id => $(id).addEventListener("input", updateTaskSummary));
+const JOB_NAME = {kylin: "交易数据", rating: "目的地评级", score: "供应商评级"};
 function buildTask(){
   const ids = [...$("tAccounts").querySelectorAll("input:checked")].map(i => i.value);
-  const mode = segVal($("tMode")), params = {};
+  const jobs = pickedJobs();
+  if (!jobs.length) return {err: "至少选一张表"};
+  const params = {jobs}, when = [];
   if ($("tWrite").value) params.write_mode = $("tWrite").value;
-  let desc = "";
-  if (mode === "day"){
+  if (jobs.includes("kylin")){
     if (segVal($("tDayHow")) === "range"){
-      if (!$("tStart").value || !$("tEnd").value) return {err: "请选择起始和截止日期"};
+      if (!$("tStart").value || !$("tEnd").value) return {err: "请选择交易数据的起始和截止日期"};
       if ($("tStart").value > $("tEnd").value) return {err: "起始日期晚于截止日期"};
       params.start_date = $("tStart").value; params.end_date = $("tEnd").value;
-      desc = `日数据 ${params.start_date} ~ ${params.end_date}`;
+      when.push(`${params.start_date} ~ ${params.end_date}`);
     } else {
       params.days = Math.max(1, parseInt($("tDays").value, 10) || 1);
-      desc = `日数据 最近 ${params.days} 天`;
+      when.push(`近 ${params.days} 天`);
     }
-  } else {
-    const jobs = [];
-    if ($("tRating").checked) jobs.push("rating");
-    if ($("tScore").checked) jobs.push("score");
-    if (!jobs.length) return {err: "至少选一类评级"};
-    if (jobs.length === 1) params.jobs = jobs;
+  }
+  if (jobs.some(j => j !== "kylin")){
     if (segVal($("tMonthHow")) === "range"){
-      if (!$("tMStart").value || !$("tMEnd").value) return {err: "请选择起止月份"};
+      if (!$("tMStart").value || !$("tMEnd").value) return {err: "请选择评级的起止月份"};
       if ($("tMStart").value > $("tMEnd").value) return {err: "起始月份晚于截止月份"};
       params.start_month = $("tMStart").value; params.end_month = $("tMEnd").value;
-      desc = `月数据 ${params.start_month} ~ ${params.end_month}`;
+      when.push(`${params.start_month} ~ ${params.end_month}`);
     } else {
       if ($("tMonthVal").value) params.month = $("tMonthVal").value;
-      desc = `月数据 ${params.month || lastMonth() + "（上月）"}`;
+      when.push(params.month || `${lastMonth()}（上月）`);
     }
-    desc += jobs.length === 1 ? (jobs[0] === "rating" ? " · 目的地评级" : " · 供应商评级") : "";
   }
   if (!ids.length) return {err: "至少选一个账号"};
-  return {ids, mode, params, desc};
+  const hasDay = jobs.includes("kylin"), hasMonth = jobs.some(j => j !== "kylin");
+  const mode = hasDay && hasMonth ? "mixed" : (hasDay ? "day" : "month");
+  return {ids, mode, params, desc: jobs.map(j => JOB_NAME[j]).join("、") + " · " + when.join(" / ")};
 }
 function updateTaskSummary(){
   const t = buildTask();
@@ -1939,7 +1981,7 @@ function renderSyncJobs(){
   const list = syncJobs.filter(groups[syncFilter]);
   $("syncRows").innerHTML = list.length ? list.map(j => {
     const [st, cls] = SYNC_STATUS[j.status] || [j.status, ""];
-    const brief = (j.tables || []).map(t => `${t.table.replace("ads_sup_ota_ctrip_", "")} ${t.rows} 行${t.ok ? "" : " ✗"}`).join(" · ");
+    const brief = (j.tables || []).map(t => `${t.label || t.table} ${t.rows} 行${t.ok ? "" : " ✗"}`).join(" · ");
     return `
     <div class="${rowCls("syncRows", j.id)}" data-id="${esc(j.id)}">
       <div class="dt-main">
@@ -1953,7 +1995,7 @@ function renderSyncJobs(){
       </div>
       <div class="dt-detail">
         ${(j.tables || []).length ? `<div class="kvs">${j.tables.map(t => `
-          <div class="kv"><span>${esc(t.table)}</span><b style="color:${t.ok ? "var(--ok)" : "var(--bad)"}">${t.rows} 行 · ${t.ok ? "成功" : "失败"}</b>
+          <div class="kv"><span>${esc(t.label ? t.label + " · " + t.table : t.table)}</span><b style="color:${t.ok ? "var(--ok)" : "var(--bad)"}">${t.rows} 行 · ${t.ok ? "成功" : "失败"}</b>
             ${t.error ? `<span style="color:var(--bad);margin-top:2px">${esc(t.error)}</span>` : ""}</div>`).join("")}</div>`
           : (j.error ? `<p class="note" style="color:var(--bad);margin:0 0 12px">${esc(j.error)}</p>` : "")}
         <div class="detail-acts"><button class="btn btn--orange" data-act="log">查看推送日志${ICON("right")}</button></div>
