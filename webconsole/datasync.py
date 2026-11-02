@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -45,6 +46,10 @@ DEFAULT_PK = {
     "supplier_rate_score": ["account_id", "scenic_id", "evaluation_month", "region_id"],
 }
 
+# 本地记账字段：采集时间、行的创建 / 更新时间。下游不登记这些字段，
+# 没单独选过字段的表默认不推它们（推了下游会报「含未登记字段 create_time」）
+LOCAL_ONLY_FIELDS = ("collect_time", "create_time", "update_time")
+
 # 哪些表归日同步、哪些归月同步
 DAILY_TABLES = ("kylin_daily",)
 MONTHLY_TABLES = ("destination_rating", "supplier_rate_score")
@@ -60,7 +65,7 @@ class TableSync:
     remote_table: str = ""     # 下游的 tableName，留空则用本地表名
     pk: list[str] = field(default_factory=list)
     lookback: int = 7          # 日表回溯天数 / 月表回溯月数
-    # 推哪些字段。空 = 全部字段（除本地自增 id）。按本地列名填。
+    # 推哪些字段，按本地列名填。空 = 没单独选过：推除本地记账字段以外的全部字段。
     fields: list[str] = field(default_factory=list)
     # 本地列名 → 下游字段名。只填需要改名的；pkId 也按改名后的推。
     aliases: dict = field(default_factory=dict)
@@ -69,7 +74,7 @@ class TableSync:
         """实际推送的本地列，按表结构顺序；未知列名忽略。"""
         known = [f.name for f in TABLES[table_key].fields]
         if not self.fields:
-            return known
+            return [c for c in known if c not in LOCAL_ONLY_FIELDS]
         wanted = set(self.fields)
         return [c for c in known if c in wanted]
 
@@ -321,6 +326,22 @@ def _url_error_text(exc: Exception) -> str:
     return text
 
 
+def _unregistered_hint(error: str, pushed: list[str]) -> str:
+    """下游报「含未登记字段 X（表 Y 允许：a, b, c）」时，算出这次推的字段里哪些下游全都不认。
+
+    下游一次只报第一个不认的字段，改一个推一次太慢；这里一次性全列出来。
+    """
+    m = re.search(r"允许[:：]\s*([^）)]+)", error or "")
+    if not m:
+        return ""
+    allowed = {x.strip() for x in m.group(1).split(",") if x.strip()}
+    extra = [c for c in pushed if c not in allowed]
+    if not extra:
+        return ""
+    return (f"下游不认这些字段：{', '.join(extra)}。"
+            f"到「远程同步」这张表的「推送字段」里取消勾选（会自动保存）后重推")
+
+
 def post_batch(sc: SyncConfig, table_name: str, pk: list[str],
                rows: list[dict], emit=None) -> dict:
     """推一批。只用标准库，少一个依赖少一份装不上的风险。"""
@@ -340,7 +361,9 @@ def post_batch(sc: SyncConfig, table_name: str, pk: list[str],
             data = json.loads(body) if body else {}
             # 下游约定 code=0 / status=true 为成功
             if data.get("code") not in (0, None) or data.get("status") is False:
-                raise SyncError(f"下游返回失败：{data.get('msg') or body[:200]}")
+                # 下游业务校验不通过（字段未登记、主键缺失……），重试多少次都一样
+                last = SyncError(f"下游返回失败：{data.get('msg') or body[:200]}")
+                break
             return data.get("data") or {}
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:200]
@@ -468,6 +491,10 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
                 ok_all = False
                 item.update(ok=False, error=str(exc))
                 emit(f"[{schema.name}] 失败：{exc}", "error")
+                hint = _unregistered_hint(str(exc), [ts.remote_name(c) for c in columns])
+                if hint:
+                    item["error"] += f"；{hint}"
+                    emit(f"[{schema.name}] {hint}", "error")
             result["tables"][key] = item
     finally:
         _running.release()

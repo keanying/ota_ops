@@ -450,6 +450,7 @@
         <div id="syTables"></div>
         <div class="sticky-acts">
           <button class="btn btn--go" id="btnSyncSave">保存配置</button>
+          <span class="note" id="syncSaveState" style="margin:0;align-self:center"></span>
           <button class="btn" id="btnSyncDry">全部试运行（预览报文，不推送）</button>
           <span style="flex:1"></span>
           <span class="note" style="margin:0;align-self:center">按各表的「回溯」窗口取数</span>
@@ -1769,8 +1770,8 @@ function renderSyncTables(){
     const t = (d.tables || {})[key] || {};
     const cols = meta.columns || [];
     const configured = !!(t.fields && t.fields.length);
-    // 没单独配置过的表，后端现在会推全部字段；这里如实显示，并提示去选
-    const chosen = new Set(configured ? t.fields : cols.map(c => c.name));
+    // 没单独选过字段的表：后端推除本地记账字段（采集/创建/更新时间）以外的全部字段，这里如实显示
+    const chosen = new Set(configured ? t.fields : cols.map(c => c.name).filter(n => !AUDIT.test(n)));
     const aliases = t.aliases || {};
     const pk = new Set(t.pk && t.pk.length ? t.pk : (d.default_pk[key] || []));
     const daily = meta.period === "daily";
@@ -1847,10 +1848,11 @@ function updateCount(card){
   const hint = card.querySelector('[data-f="hint"]');
   if (miss.length){
     hint.innerHTML = `<span style="color:var(--stop)">主键 ${esc(miss.join(", "))} 没选进推送字段，保存时会被拦下</span>`;
-  } else if (!card.dataset.configured && on.length === all){
-    hint.innerHTML = `<span style="color:var(--signal)">这张表还没选过字段，目前会推全部 ${all} 个字段。点掉不需要的再保存，之后只推选中的。</span>`;
+  } else if (!card.dataset.configured){
+    hint.innerHTML = `<span style="color:var(--signal)">这张表还没选过字段：默认推除采集 / 创建 / 更新时间外的 ${on.length} 个字段。
+      点掉下游没登记的字段即可（改动自动保存）。</span>`;
   } else {
-    hint.textContent = "只推选中的字段（亮色），点击切换。表里以后新增的字段不会自动推，需要来这里勾选。";
+    hint.textContent = "只推选中的字段（亮色），点击切换，改动自动保存。表里以后新增的字段不会自动推，需要来这里勾选。";
   }
 }
 const AUDIT = /^(create_time|update_time|created_at|updated_at|collect_time)$/;
@@ -1927,17 +1929,52 @@ function collectSyncPatch(){
     },
   }};
 }
-async function saveSync(quiet){
+function setSaveState(text, color){
+  $("syncSaveState").textContent = text;
+  $("syncSaveState").style.color = color || "var(--muted)";
+}
+async function saveSync(quiet, auto){
+  clearTimeout(autoSaveTimer);
   const {err, patch} = collectSyncPatch();
-  if (err){ toast(err); return false; }
+  if (err){
+    setSaveState(`未保存：${err}`, "var(--stop)");
+    if (!auto) toast(err);
+    return false;
+  }
   try {
     const r = await post("/api/sync/config", patch);
+    setSaveState(`已${auto ? "自动" : ""}保存 ${new Date().toTimeString().slice(0, 8)}`, "var(--ok)");
     if (!quiet) toast(`同步配置已保存，下次补推：日 ${r.next_daily || "未启用"} · 月 ${r.next_monthly || "未启用"}`);
-    await loadSync();
+    if (auto){
+      // 自动保存不重画页面：正在输入的下游字段名不能被打断
+      syncMeta.tables = patch.tables;
+      document.querySelectorAll("#syTables .tcard").forEach(c => { c.dataset.configured = "1"; updateCount(c); });
+    } else {
+      await loadSync();
+    }
     return true;
-  } catch (e){ toast(e.message); return false; }
+  } catch (e){ setSaveState(`保存失败：${e.message}`, "var(--stop)"); toast(e.message); return false; }
 }
 $("btnSyncSave").onclick = () => saveSync(false);
+
+/* 表卡片上的改动（推送字段 / pkId / 参与同步 / 下游表名 / 字段名 / 回溯）自动保存。
+   之前只在页面上改、没点保存时，采集任务完成后的自动推送读到的还是旧配置，
+   下游就会报「含未登记字段」。 */
+let autoSaveTimer = null;
+function scheduleAutoSave(){
+  setSaveState("有改动，正在保存…", "var(--signal)");
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => saveSync(true, true), 700);
+}
+$("syTables").addEventListener("click", (e) => {
+  if (e.target.closest('.chip, [data-f="all"], [data-f="none"], [data-f="nometa"], [data-f="pkonly"]')) scheduleAutoSave();
+});
+$("syTables").addEventListener("input", (e) => {
+  if (e.target.matches('[data-f="alias"], [data-f="rt"], [data-f="lb"], [data-f="on"]')) scheduleAutoSave();
+});
+// 接口地址、Key 等上方的配置仍然手动保存（Key 输入一半时不该被保存），只提示有改动
+["syEnabled","syUrl","syHeader","syKey","syBatch","syAfter","syDaily","syDailyAt","syMonthly","syMonthDay","syMonthAt"]
+  .forEach(id => $(id).addEventListener("input", () => setSaveState("上方接口 / 策略有改动，点「保存配置」生效", "var(--signal)")));
 
 async function runSync(job, dry, tables, name){
   // 先存再跑：页面上刚改的字段配置要生效
