@@ -16,4 +16,5 @@ browser
 # 控制台改配置前自动生成的备份（含明文密码），回溯进度等运行时文件
 config/config.yaml.bak-*
 data/backfill_progress.json
-*.b64                  # auth_sync.py 导出的登录态（含 Cookie）
+# auth_sync.py 导出的登录态（含 Cookie）
+*.b64
