@@ -1783,6 +1783,222 @@ async def login_ws(ws: WebSocket, account_id: str) -> None:
             pass
 
 
+# =============================================================================
+# 新商户上线：一条 WebSocket 走完 建号 → 登录 → （人工验证）→ 成功 → 关闭
+# =============================================================================
+
+def _upsert_merchant(account: str, password: str, scenic_id: str,
+                     scenic_name: str) -> tuple[str, bool, str]:
+    """建号或更新已有账号。返回 (account_id, 是否新建, 错误)。
+
+    同一个登录账号再来一次（比如改了密码重新上线）不报「已存在」，而是更新密码 / 景区 / 名称。
+    """
+    global _cfg
+    from .accounts_admin import (SCENIC_ID_RE, AccountAdminError, NewAccount,
+                                 create_account, id_from_account, update_account)
+
+    if scenic_id and not SCENIC_ID_RE.match(scenic_id):
+        return "", False, f"景区ID 格式不对：{scenic_id}（只允许字母、数字、_ 和 -）"
+    try:
+        with _lock:
+            existing = next((a for a in _cfg.ctrip.accounts
+                             if a.account == account or a.account_id == id_from_account(account)), None)
+            if existing is None:
+                fresh, got, _ = create_account(_cfg, NewAccount(
+                    name=scenic_name, account=account, password=password,
+                    remark=scenic_name, scenic_id=scenic_id, status="active"))
+                _cfg = fresh
+                return got.account_id, True, ""
+            fields = {"password": password, "status": "active"}
+            if scenic_name:
+                fields.update(name=scenic_name, remark=scenic_name)
+            if scenic_id:
+                fields["scenic_id"] = scenic_id
+            update_account(Path(_cfg.config_path), existing.account_id, fields)
+            _cfg = load_config(str(_cfg.config_path), validate=False)
+            return existing.account_id, False, ""
+    except AccountAdminError as exc:
+        return "", False, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        return "", False, f"保存账号失败：{exc}"
+
+
+def _join_schedule(account_id: str) -> dict:
+    """确保这个账号在每日定时采集里。返回给前端的说明。
+
+    定时采集默认采所有启用的账号；只有配了账号白名单时才需要把它加进去。
+    """
+    cs = _collect_sched()
+    if cs.account_ids and account_id not in cs.account_ids:
+        notify.update_settings({"collect": {"account_ids": cs.account_ids + [account_id]}})
+        cs = _collect_sched()
+    parts = []
+    if "kylin" in cs.jobs:
+        parts.append(f"每天 {cs.daily_at} 采交易数据")
+    if cs.month_jobs:
+        names = "、".join(csched.JOB_LABELS[j] for j in cs.month_jobs)
+        parts.append(f"每月 {cs.monthly_day} 号 {cs.monthly_at} 采{names}")
+    scheduled = bool(cs.enabled and parts)
+    return {"scheduled": scheduled,
+            "schedule": ("已加入定时采集：" + "；".join(parts)) if scheduled else
+                        "定时采集当前未启用（在控制台「任务管理 → 定时采集」开启后，会自动采这个账号）"}
+
+
+def _close_browser(account_id: str) -> None:
+    """登录完关掉浏览器，释放 profile —— 否则定时采集需要重登时会撞上「profile 正被占用」。"""
+    worker = _workers.pop(account_id, None)
+    if worker:
+        worker.shutdown()
+        worker.join(timeout=20)
+    display = _displays.pop(account_id, None)
+    if display:
+        display.stop()
+
+
+@app.websocket("/api/onboard")
+async def onboard_ws(ws: WebSocket) -> None:
+    """新商户上线（简化版登录 API）。协议见 ws_client.WS_SPEC 或 /api/ws-spec。
+
+    客户端 → 服务端（只有三种）
+        {"action":"start","scenic_id":"PFT…","scenic_name":"九龙潭","account":"vbk_…","password":"…"}
+        {"action":"code","code":"123456"}        收到 need_code 后回传短信验证码
+        {"action":"cancel"}
+    服务端 → 客户端（只有六种，字段 event）
+        accepted / progress / need_code / need_captcha / success / failed
+    success 或 failed 之后服务端主动关闭连接。
+    """
+    await ws.accept()
+    finished = asyncio.Event()
+    state: dict = {"account_id": "", "result": None}
+
+    async def send(event: str, **data) -> None:
+        with contextlib.suppress(Exception):
+            await ws.send_text(json.dumps({"event": event, **data}, ensure_ascii=False))
+
+    async def finish(event: str, **data) -> None:
+        if not finished.is_set():
+            state["result"] = event
+            await send(event, **data)
+            finished.set()
+
+    # ---- 1. 第一条消息必须是 start
+    try:
+        first = json.loads(await asyncio.wait_for(ws.receive_text(), timeout=120))
+    except (asyncio.TimeoutError, json.JSONDecodeError, WebSocketDisconnect):
+        await send("failed", message="没收到 start 消息")
+        with contextlib.suppress(Exception):
+            await ws.close()
+        return
+    account = str(first.get("account") or "").strip()
+    password = str(first.get("password") or "")
+    scenic_id = str(first.get("scenic_id") or "").strip()
+    scenic_name = str(first.get("scenic_name") or first.get("name") or "").strip()
+    if first.get("action") != "start" or not account or not password:
+        await send("failed", message="第一条消息应为 start，且账号、密码必填")
+        with contextlib.suppress(Exception):
+            await ws.close()
+        return
+
+    aid, created, err = await asyncio.to_thread(_upsert_merchant, account, password,
+                                                scenic_id, scenic_name)
+    if err:
+        await send("failed", message=err)
+        with contextlib.suppress(Exception):
+            await ws.close()
+        return
+    state["account_id"] = aid
+    await send("accepted", account_id=aid, created=created,
+               message=("已新建账号" if created else "账号已存在，已更新密码 / 景区信息") + f"：{aid}")
+
+    # ---- 2. 开浏览器，发起登录
+    await send("progress", step="browser", message="正在打开浏览器")
+    ok, msg = await asyncio.to_thread(_ensure_browser, aid)
+    worker = _workers.get(aid)
+    if not ok or worker is None:
+        await send("failed", message=f"浏览器启动失败：{msg}")
+        with contextlib.suppress(Exception):
+            await ws.close()
+        return
+    worker.submit({"type": "login_start", "account": account, "password": password,
+                   "timeout": 600, "sms_wait": 300, "persist": True})
+
+    # ---- 3. 把内部事件翻译成六种简单事件
+    async def pump() -> None:
+        global _cfg
+        steps = {"starting": ("browser", "浏览器就绪，正在打开登录页"),
+                 "filling": ("filling", "正在填写账号密码"),
+                 "submitted": ("submitted", "已提交登录，等待结果"),
+                 "sms_filling": ("code", "验证码已填入，正在登录")}
+        while not finished.is_set():
+            try:
+                evt = await asyncio.to_thread(worker.events.get, True, 0.5)
+            except queue.Empty:
+                continue
+            kind = evt.get("type")
+            if kind == "config_changed":
+                with contextlib.suppress(Exception):
+                    _cfg = load_config(os.environ.get("CTRIP_CONFIG") or None, validate=False)
+                continue
+            if kind in ("notify_captcha", "notify_sms"):
+                reason = (f"手机短信验证码{('（' + evt.get('phone') + '）') if evt.get('phone') else ''}"
+                          if kind == "notify_sms" else (evt.get("hint") or "滑块/图形验证"))
+                sent, _detail = await asyncio.to_thread(
+                    notify.notify_verify_needed, aid, scenic_name or account, _verify_link(aid), reason)
+                await send("progress", step="notified",
+                           message="已发飞书通知" if sent else "飞书通知未发出（未配置或发送失败）")
+                continue
+            if kind != "login":
+                continue
+            stage = evt.get("stage")
+            if stage in steps:
+                step, text = steps[stage]
+                await send("progress", step=step, message=text)
+            elif stage == "need_sms":
+                await send("need_code", phone=evt.get("phone", ""),
+                           message="已发送短信验证码，请回传：{\"action\":\"code\",\"code\":\"123456\"}")
+            elif stage == "need_captcha":
+                await send("need_captcha", link=_verify_link(aid),
+                           message="需要人工拖滑块：打开链接，在浏览器画面里完成验证，完成后会自动继续")
+            elif stage == "success":
+                await asyncio.to_thread(_close_browser, aid)
+                info = await asyncio.to_thread(_join_schedule, aid)
+                await finish("success", account_id=aid, scenic_id=scenic_id,
+                             message="登录成功，登录态已保存", **info)
+            elif stage in ("failed", "aborted"):
+                await finish("failed", message=evt.get("message") or "登录失败")
+
+    async def recv() -> None:
+        while not finished.is_set():
+            try:
+                msg = json.loads(await ws.receive_text())
+            except json.JSONDecodeError:
+                continue
+            action = msg.get("action")
+            if action == "code":
+                code = str(msg.get("code") or "").strip()
+                if code:
+                    worker.submit({"type": "sms_code", "code": code})
+                    await send("progress", step="code", message="已收到验证码，正在填入")
+            elif action == "cancel":
+                worker.submit({"type": "login_abort"})
+                await finish("failed", message="已取消")
+
+    pump_task = asyncio.create_task(pump())
+    recv_task = asyncio.create_task(recv())
+    try:
+        done, _ = await asyncio.wait({pump_task, recv_task, asyncio.create_task(finished.wait())},
+                                     return_when=asyncio.FIRST_COMPLETED)
+        if recv_task in done and not finished.is_set():
+            # 客户端断开：中止登录，别让浏览器停在半路
+            worker.submit({"type": "login_abort"})
+    finally:
+        finished.set()
+        for t in (pump_task, recv_task):
+            t.cancel()
+        with contextlib.suppress(Exception):
+            await ws.close()
+
+
 def _ensure_browser(account_id: str) -> tuple[bool, str]:
     """登录前确保浏览器已起（沿用 /api/browser/start 的全部逻辑）。
 

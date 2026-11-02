@@ -186,6 +186,34 @@
   .tail div{display:flex;gap:12px;white-space:pre-wrap;word-break:break-word}
   .tail .t{color:#6E7891;flex:none} .tail .warn{color:#F5B544} .tail .error{color:#FF8A8A} .tail .done{color:#4FD3A0}
 
+  /* ================================================================ 平铺表格（账户管理） */
+  .xt-wrap{background:var(--card);border-radius:16px;overflow:auto;box-shadow:0 1px 2px rgba(30,40,90,.03)}
+  table.xt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;min-width:1000px}
+  .xt th{position:sticky;top:0;background:#F6F7FD;color:var(--ink-2);font-weight:600;text-align:left;padding:14px 12px;
+    white-space:nowrap;z-index:1;font-size:13px}
+  .xt td{padding:14px 12px;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+  .xt tbody tr:hover td{background:#FAFBFF}
+  .xt .acts-col{position:sticky;right:0;background:#fff;box-shadow:-8px 0 12px -10px rgba(30,40,90,.25);text-align:center}
+  .xt th.acts-col{background:#F6F7FD}
+  .xt tbody tr:hover td.acts-col{background:#FAFBFF}
+  .plat{display:inline-block;background:#2577E3;color:#fff;font-weight:700;font-size:12.5px;padding:5px 14px;border-radius:16px}
+  .xt .who b{display:block;font-size:14px;color:var(--ink);font-weight:600}
+  .xt .who small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;font-family:var(--mono)}
+  .grp-tag{display:inline-block;background:var(--primary-50);color:var(--primary-d);font-size:12.5px;padding:4px 12px;border-radius:8px;font-family:var(--mono)}
+  .grp-tag.none{background:var(--warn-50);color:#B26A00;font-family:var(--sans)}
+  .xt .when{color:var(--ink-2);font-family:var(--mono);font-size:12.5px}
+  .ibtns{display:inline-flex;gap:0;align-items:center}
+  .ib{width:30px;height:30px;border-radius:9px;border:0;background:none;cursor:pointer;display:grid;place-items:center;color:var(--primary-d)}
+  .ib svg{width:18px;height:18px}
+  .ib:hover{background:var(--primary-50)}
+  .ib.solid svg{background:var(--primary);color:#fff;stroke:#fff;border-radius:6px;padding:2px;width:22px;height:22px}
+  .ib.orange{color:var(--orange-d)} .ib.orange:hover{background:#FFF2EA}
+  .ib.red{color:var(--bad)} .ib.red:hover{background:var(--bad-50)}
+  .ib.dark{color:var(--ink)}
+  .ib:disabled{opacity:.25;cursor:not-allowed;background:none}
+  .ib.spin svg{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
   /* ================================================================ 卡片 / 表单 */
   .card{background:var(--card);border-radius:16px;margin-bottom:18px;box-shadow:0 1px 2px rgba(30,40,90,.03)}
   .card-hd{display:flex;align-items:center;gap:10px;padding:16px 22px;border-bottom:1px solid var(--line)}
@@ -389,6 +417,13 @@
   <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="i-fold" viewBox="0 0 24 24"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></symbol>
   <symbol id="i-caret" viewBox="0 0 10 10"><path d="M3 1l5 4-5 4z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7.5a8 8 0 1011.4 0"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
 </svg>
 
 <div class="app">
@@ -448,10 +483,12 @@
             <input id="acctSearch" placeholder="搜索名称 / 账号 / 景区"></label>
           <button class="btn btn--primary" id="btnAcctNew"><svg class="i" style="width:15px;height:15px"><use href="#i-plus"/></svg>新增账号</button>
         </div>
-        <div class="dt" style="--cols:2.1fr 1.6fr 1fr 1.3fr .9fr 1.7fr 20px">
-          <div class="dt-head"><span>账号</span><span>标识 / 景区</span><span>登录态</span><span>上次登录</span><span>浏览器</span><span>当前任务</span>
-            <button class="tog" data-tog="acctRows" title="全部展开 / 收起"><svg class="i"><use href="#i-fold"/></svg></button></div>
-          <div id="acctRows"></div>
+        <div class="xt-wrap">
+          <table class="xt">
+            <thead><tr><th>平台</th><th>账号标识</th><th>景区</th><th>浏览器</th><th>登录态</th><th>当前任务</th>
+              <th>登录态更新于</th><th>最近检测</th><th class="acts-col">操作</th></tr></thead>
+            <tbody id="acctRows"></tbody>
+          </table>
         </div>
       </section>
 
@@ -1057,52 +1094,56 @@ function renderAccounts(){
     ["disabled", "已停用", accounts.filter(groups.disabled).length]], acctFilter, (v) => { acctFilter = v; renderAccounts(); });
   const list = accounts.filter(groups[acctFilter]).filter(a => !q ||
     [a.name, a.remark, a.account, a.account_id, a.scenic_id].some(x => String(x || "").toLowerCase().includes(q)));
+  const ts = (t) => t ? esc(t.replace("T", " ").slice(0, 19)) : '<span class="muted">—</span>';
+  const ib = (act, icon, title, cls = "", dis = false) =>
+    `<button class="ib ${cls}" data-act="${act}" title="${title}" aria-label="${title}" ${dis ? "disabled" : ""}><svg class="i"><use href="#i-${icon}"/></svg></button>`;
   $("acctRows").innerHTML = list.length ? list.map(a => `
-    <div class="${rowCls("acctRows", a.account_id)}" data-id="${esc(a.account_id)}">
-      <div class="dt-main">
-        <span class="ellip">${esc(a.name || a.remark || a.account || a.account_id)}
-          <span class="sub2 mono">${esc(a.account || "（未配置登录账号）")}</span></span>
-        <span class="ellip mono" style="font-weight:600">${esc(a.account_id)}
-          <span class="sub2">${a.scenic_id ? esc(a.scenic_id) : '<span style="color:var(--warn)">未绑定景区</span>'}</span></span>
-        <span><span class="tag ${stateCls(a)}">${stateOf(a)}</span>${a.status === "disabled" ? ' <span class="tag">停用</span>' : ""}</span>
-        <span class="mono" style="font-weight:500">${esc((a.login_at || "从未登录").replace("T", " ").slice(0, 16))}</span>
-        <span>${a.browser === "live" ? '<span class="tag info"><span class="dot info beat"></span>在线</span>' : '<span class="muted" style="font-weight:500">关闭</span>'}</span>
-        <span class="ellip">${a.task ? `<span class="tag info"><span class="dot info beat"></span>${esc(a.task)}</span>` : '<span class="muted">—</span>'}</span>
-        ${CARET}
-      </div>
-      <div class="dt-detail">
-        <div class="kvs">
-          <div class="kv"><span>账号标识</span><b class="mono">${esc(a.account_id)}</b></div>
-          <div class="kv"><span>登录账号</span><b class="mono">${esc(a.account || "—")}</b></div>
-          <div class="kv"><span>景区 ID</span><b class="mono">${esc(a.scenic_id || "未绑定")}</b></div>
-          <div class="kv"><span>目的地指纹</span><b>${a.region_count ? `${a.region_count} 个目的地` : "未记录"}</b></div>
-          <div class="kv"><span>上次登录</span><b class="mono">${esc((a.login_at || "从未").replace("T", " "))}</b></div>
-          <div class="kv"><span>最近校验</span><b class="mono">${esc((a.last_check_at || "—").replace("T", " "))}</b></div>
-          <div class="kv"><span>密码</span><b>${a.password_set ? "已配置" : '<span style="color:var(--bad)">未配置</span>'}</b></div>
-          <div class="kv"><span>状态</span><b>${a.status === "disabled" ? "停用（不参与定时）" : "启用"}</b></div>
-        </div>
-        <div class="detail-acts">
-          <button class="btn btn--orange" data-act="browser">${a.is_fresh ? "打开浏览器" : "去登录"}${ICON("right")}</button>
-          <button class="btn" data-act="collect">新建采集</button>
-          ${a.task ? `<button class="btn" data-act="log" data-run="${esc(a.task_run_id)}">查看采集日志</button>` : ""}
-          <button class="btn" data-act="runs">运行记录</button>
-          <span class="grow"></span>
-          <button class="btn" data-act="edit">编辑</button>
-          <button class="btn btn--danger" data-act="del">删除</button>
-        </div>
-      </div>
-    </div>`).join("")
-    : `<div class="dt-empty">${accounts.length ? "没有符合条件的账号" : "还没有账号，点右上角「新增账号」"}</div>`;
+    <tr data-id="${esc(a.account_id)}">
+      <td><span class="plat">携程</span></td>
+      <td class="who"><b>${esc(a.name || a.remark || a.account || a.account_id)}</b>
+        <small>${esc(a.account || "（未配置登录账号）")}${a.account_id !== a.account ? ` · ${esc(a.account_id)}` : ""}</small></td>
+      <td>${a.scenic_id ? `<span class="grp-tag">${esc(a.scenic_id)}</span>` : '<span class="grp-tag none">未绑定</span>'}</td>
+      <td>${a.browser === "live" ? '<span class="dot ok beat"></span> 在线' : '<span class="dot"></span> <span class="muted">关闭</span>'}</td>
+      <td><span class="tag ${stateCls(a)}">${a.is_fresh ? "正常" : stateOf(a)}</span>${a.status === "disabled" ? ' <span class="tag">停用</span>' : ""}</td>
+      <td>${a.task ? `<a href="#" data-act="log" data-run="${esc(a.task_run_id)}" class="tag info" style="text-decoration:none"><span class="dot info beat"></span>采集中</a>` : '<span class="muted">—</span>'}</td>
+      <td class="when">${ts(a.login_at)}</td>
+      <td class="when">${ts(a.last_check_at)}</td>
+      <td class="acts-col"><span class="ibtns">
+        ${ib("browser", "monitor", a.is_fresh ? "打开浏览器" : "去登录（打开浏览器）", a.is_fresh ? "" : "orange")}
+        ${ib("collect", "play", "新建采集", "solid")}
+        ${ib("edit", "pen", "编辑")}
+        ${ib("runs", "eye", "运行记录", "dark")}
+        ${ib("verify", "shield", "检测登录态", "", !a.has_state)}
+        ${ib("stop", "power", "关闭浏览器", "orange", a.browser !== "live")}
+        ${ib("del", "trash", "删除", "red")}
+      </span></td>
+    </tr>`).join("")
+    : `<tr><td colspan="9" style="text-align:center;padding:40px 0;color:var(--muted)">${accounts.length ? "没有符合条件的账号" : "还没有账号，点右上角「新增账号」"}</td></tr>`;
 }
-bindRows("acctRows");
 $("acctSearch").addEventListener("input", renderAccounts);
 $("acctRows").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-act]"); if (!btn) return;
-  const id = btn.closest(".dt-row").dataset.id;
+  const btn = e.target.closest("[data-act]"); if (!btn || btn.disabled) return;
+  e.preventDefault();
+  const id = btn.closest("tr").dataset.id;
   ({browser: () => openBrowser(id), collect: () => openTaskDialog([id]), edit: () => openAccountDialog(id),
     del: () => openDeleteDialog(id), log: () => openRunLog(btn.dataset.run),
-    runs: () => { $("runFilterAcct").value = id; runFilter = "all"; go("runs"); }})[btn.dataset.act]();
+    runs: () => { $("runFilterAcct").value = id; runFilter = "all"; go("runs"); },
+    verify: () => verifyAccount(id, btn), stop: () => stopBrowser(id)})[btn.dataset.act]();
 });
+
+async function verifyAccount(id, btn){
+  btn.classList.add("spin"); btn.disabled = true;
+  try {
+    const r = await post(`/api/accounts/${encodeURIComponent(id)}/verify`);
+    toast(`${acctName(id)}：${r.ok ? "登录态正常" : "登录态无效"}（${r.detail}）`);
+  } catch (e){ toast(e.message); }
+  loadAccounts();
+}
+async function stopBrowser(id){
+  try { const r = await post(`/api/browser/${encodeURIComponent(id)}/stop`); toast(`${acctName(id)}：${r.message}`); }
+  catch (e){ toast(e.message); }
+  loadAccounts();
+}
 
 /* ---------------------------------------------------------------- 新增 / 编辑账号 */
 let editing = null;

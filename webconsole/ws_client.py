@@ -45,6 +45,32 @@ except ImportError:  # pragma: no cover
 WS_SPEC = {
     "endpoints": [
         {
+            "path": "/api/onboard",
+            "用途": "新商户上线（推荐，简化版）：建号或更新 → 登录 → 需要时人工验证 → 成功 → 服务端关闭连接。"
+                    "成功后账号自动进入每日定时采集，浏览器自动关闭。",
+            "客户端发送": [
+                {"action": "start", "scenic_id": "PFTSCA01018088", "scenic_name": "九龙潭",
+                 "account": "vbk_569202", "password": "…",
+                 "说明": "连上后的第一条消息。账号、密码必填；同一个账号再发一次会更新密码 / 景区，不会报已存在"},
+                {"action": "code", "code": "123456", "说明": "收到 need_code 后回传短信验证码，后端自动填入并登录"},
+                {"action": "cancel", "说明": "取消本次登录"},
+            ],
+            "服务端推送": [
+                {"event": "accepted", "account_id": "vbk_569202", "created": True,
+                 "说明": "账号已写入（created=false 表示已有账号，已更新）"},
+                {"event": "progress", "step": "browser|filling|submitted|notified|code", "message": "…",
+                 "说明": "过程播报，前端显示即可"},
+                {"event": "need_code", "phone": "138****8888",
+                 "说明": "需要短信验证码：已自动点过「获取验证码」并发了飞书通知，回传 code 即可"},
+                {"event": "need_captcha", "link": "http://…/?account=vbk_569202",
+                 "说明": "需要人工拖滑块：已发飞书通知，打开 link 在控制台里完成，完成后自动继续"},
+                {"event": "success", "account_id": "vbk_569202", "scheduled": True,
+                 "schedule": "已加入定时采集：每天 00:10 采交易数据；…",
+                 "说明": "登录成功、登录态已保存。随后服务端关闭连接"},
+                {"event": "failed", "message": "…", "说明": "失败或取消。随后服务端关闭连接"},
+            ],
+        },
+        {
             "path": "/api/login/{account_id}",
             "用途": "跑一次完整登录。登录成功或客户端断开即关闭连接。",
             "客户端发送": [
@@ -193,6 +219,29 @@ async def cmd_login(args) -> int:
             elif stage in ("success", "failed", "aborted"):
                 print(f"\n结束：{stage}")
                 return 0 if stage == "success" else 1
+
+
+async def cmd_onboard(args) -> int:
+    """新商户上线：/api/onboard 的命令行版本，也是最小的调用示例。"""
+    url = ws_url(args, "/api/onboard")
+    print(f"连接 {url}")
+    async with websockets.connect(url, max_size=None) as ws:
+        await ws.send(json.dumps({"action": "start", "scenic_id": args.scenic_id,
+                                  "scenic_name": args.scenic_name, "account": args.account,
+                                  "password": args.password}, ensure_ascii=False))
+        loop = asyncio.get_running_loop()
+        async for raw in ws:                      # 服务端发完 success / failed 会主动关闭
+            msg = json.loads(raw)
+            ev = msg.get("event")
+            print(f"  [{ev}] {msg.get('message', '')}"
+                  + (f"  {msg['schedule']}" if msg.get("schedule") else "")
+                  + (f"  {msg['link']}" if msg.get("link") else ""))
+            if ev == "need_code":
+                code = await loop.run_in_executor(None, input, "  请输入短信验证码: ")
+                await ws.send(json.dumps({"action": "code", "code": code.strip()}))
+            elif ev in ("success", "failed"):
+                return 0 if ev == "success" else 1
+    return 1
 
 
 async def cmd_watch(args) -> int:
@@ -483,6 +532,13 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--timeout", type=int, default=600)
     lg.add_argument("--sms-wait", type=int, default=300)
     lg.set_defaults(func=cmd_login, is_async=True)
+
+    ob = sub.add_parser("onboard", help="新商户上线：建号 + 登录 + 进定时采集（简化版）")
+    ob.add_argument("--scenic-id", default="")
+    ob.add_argument("--scenic-name", default="")
+    ob.add_argument("--account", required=True)
+    ob.add_argument("--password", required=True)
+    ob.set_defaults(func=cmd_onboard, is_async=True)
 
     w = sub.add_parser("watch", help="观察主通道")
     w.add_argument("--account-id", required=True)

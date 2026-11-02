@@ -139,7 +139,7 @@ POST /api/accounts
 
 | 菜单 | 子页面 | 放什么 |
 |---|---|---|
-| **账户管理** | — | 账号列表：状态筛选（全部 / 登录态有效 / 需要登录 / 在线·采集中 / 已停用）+ 搜索；点一行展开详情（标识、景区、指纹、最近校验、密码是否配置），展开后可去登录 / 打开浏览器、新建采集、看运行记录、编辑、删除 |
+| **账户管理** | — | 账号表格：平台、账号标识、景区、浏览器、登录态、当前任务、登录态更新于、最近检测；右侧固定一排图标操作：浏览器 / 去登录、新建采集、编辑、运行记录、检测登录态、关闭浏览器、删除。上方状态筛选 + 搜索 |
 | **任务管理** | 运行记录 | 新建采集任务；状态筛选 + 账号筛选 + 搜索 + 分页；点一行展开：开始 / 结束、参数、最近 12 行日志，可查看完整日志、重跑、停止 / 取消排队 |
 | | 定时采集 | 总开关、日数据 / 月数据（含缺数补采）、预览会跑哪些账号、调度日志 |
 | **远程同步** | 推送表与字段 | 每张表一行：推送字段数、pkId、回溯、参与同步开关；展开后勾选推送字段、pkId、下游表名 / 字段名，单表试运行 / 立即推送。改动自动保存 |
@@ -472,6 +472,49 @@ python -m webconsole.ws_client smoke --account-id vbk_569202 --login --stop
 ```
 
 部署完、改完选择器、或怀疑哪里不通时，先跑这个定位到具体环节。
+
+## 新商户上线 API（推荐）：`/api/onboard`
+
+给自己的前端用的简化版：填 **景区ID、景区名称、账号、密码** → 发起登录 → 需要验证码时回传 →
+登录成功 → 服务端关闭连接。成功后账号自动在每日定时采集里，浏览器自动关闭（不占 profile）。
+
+**你发的（3 种）**
+
+```json
+{"action":"start","scenic_id":"PFTSCA01018088","scenic_name":"九龙潭","account":"vbk_569202","password":"…"}
+{"action":"code","code":"123456"}
+{"action":"cancel"}
+```
+
+**你收的（6 种，字段 `event`）**
+
+| event | 含义 | 你要做什么 |
+|---|---|---|
+| `accepted` | 账号已写入（`created=false` 表示已有账号，已更新密码 / 景区） | 显示即可 |
+| `progress` | 过程播报（`step`: browser / filling / submitted / notified / code） | 显示即可 |
+| `need_code` | 需要短信验证码，已自动点「获取验证码」并发飞书通知 | 让人输入后发 `code` |
+| `need_captcha` | 需要拖滑块，已发飞书通知，`link` 是控制台里该账号的浏览器 | 打开 link 拖完，会自动继续 |
+| `success` | 登录成功；`schedule` 说明已加入的定时采集 | 结束，服务端会关连接 |
+| `failed` | 失败或取消，`message` 是原因 | 结束，服务端会关连接 |
+
+```js
+const ws = new WebSocket(`ws://${控制台地址}/api/onboard`);
+ws.onopen = () => ws.send(JSON.stringify({action: "start", scenic_id, scenic_name, account, password}));
+ws.onmessage = (e) => {
+  const m = JSON.parse(e.data);
+  if (m.event === "need_code") ws.send(JSON.stringify({action: "code", code: prompt("短信验证码")}));
+  if (m.event === "need_captcha") window.open(m.link);
+  if (m.event === "success" || m.event === "failed") alert(m.message + (m.schedule ? "\n" + m.schedule : ""));
+};
+```
+
+命令行试：`python -m webconsole.ws_client onboard --scenic-id PFT… --scenic-name 九龙潭 --account vbk_… --password …`
+
+- 同一个账号再发一次 `start` 不会报「已存在」，而是更新密码 / 景区 / 名称后重新登录；
+- 客户端中途断开会中止这次登录；
+- 定时采集默认采所有启用的账号；配了账号白名单时会自动把新账号加进去。定时采集没开时，
+  `success` 里 `scheduled=false` 并提示去开启；
+- 原来的 `/api/login/{id}` 仍可用（控制台自己的登录弹窗在用），新接入建议用 `/api/onboard`。
 
 ## 新账号：一条连接走完
 
