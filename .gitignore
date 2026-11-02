@@ -21,3 +21,5 @@ data/backfill_progress.json
 
 # otaops.sh 的本机配置（监听地址、端口、解释器）
 console.env
+*.xml
+*.iml

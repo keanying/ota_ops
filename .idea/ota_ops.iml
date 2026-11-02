@@ -9,7 +9,7 @@
       <excludeFolder url="file://$MODULE_DIR$/data/output" />
       <excludeFolder url="file://$MODULE_DIR$/logs" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.10 (ctrip_collector)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.10 (ota_ops)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">

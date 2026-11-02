@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.10 (ctrip_collector)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10 (ctrip_collector)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10 (ota_ops)" project-jdk-type="Python SDK" />
 </project>

@@ -56,44 +56,100 @@
       "kylin_daily": {
         "enabled": true,
         "remote_table": "ads_sup_ota_ctrip_trade_di",
+        "lookback": 1,
         "pk": [
           "account_id",
           "scenic_id",
           "transaction_date",
           "date_type"
         ],
-        "lookback": 1
+        "fields": [
+          "account_id",
+          "scenic_id",
+          "transaction_date",
+          "signing_code",
+          "signing_type",
+          "biz_type",
+          "date_type",
+          "period_type",
+          "turnover",
+          "turnover_mom",
+          "order_count",
+          "order_count_mom",
+          "sold_ticket_cnt",
+          "sold_ticket_mom",
+          "validated_ticket_volume",
+          "validated_ticket_mom",
+          "refund_rate",
+          "refund_rate_mom",
+          "deal_resource_count",
+          "deal_resource_count_mom",
+          "collect_time",
+          "create_time",
+          "update_time"
+        ],
+        "aliases": {}
       },
       "destination_rating": {
-        "enabled": true,
+        "enabled": false,
         "remote_table": "ads_sup_ota_ctrip_destination_rating_di",
+        "lookback": 1,
         "pk": [
           "account_id",
           "scenic_id",
           "evaluation_month",
           "region_id"
         ],
-        "lookback": 1
+        "fields": [
+          "account_id",
+          "scenic_id",
+          "evaluation_month",
+          "region_id",
+          "region_name",
+          "region_type",
+          "analysis_text",
+          "analysis_text_len",
+          "collect_time",
+          "create_time",
+          "update_time"
+        ],
+        "aliases": {}
       },
       "supplier_rate_score": {
         "enabled": true,
         "remote_table": "ads_sup_ota_ctrip_score_di",
+        "lookback": 1,
         "pk": [
           "account_id",
           "scenic_id",
           "evaluation_month",
           "region_id"
         ],
-        "lookback": 1
+        "fields": [
+          "account_id",
+          "scenic_id",
+          "evaluation_month",
+          "region_id",
+          "region_name",
+          "region_type",
+          "overall_service_score",
+          "ocr_score",
+          "fdr_score",
+          "manual_intervention_rate_score",
+          "timely_response_20s_score",
+          "im_neg_rate_score"
+        ],
+        "aliases": {}
       }
     },
     "schedule": {
       "daily_enabled": true,
-      "daily_at": "03:30",
+      "daily_at": "00:15",
       "monthly_enabled": true,
       "monthly_day": 1,
-      "monthly_at": "04:00"
-    }
+      "monthly_at": "00:15"
+    },
+    "proxy": "none"
   },
   "collect": {
     "enabled": true,
@@ -103,6 +159,11 @@
     "monthly_enabled": true,
     "monthly_day": 1,
     "monthly_at": "00:10",
-    "skip_stale_login": true
+    "skip_stale_login": true,
+    "monthly_retry_days": 1,
+    "jobs": [
+      "kylin",
+      "score"
+    ]
   }
 }
