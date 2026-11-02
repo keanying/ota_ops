@@ -1255,7 +1255,7 @@ function showRoute(r){
   $("pageCrumb").textContent = meta.crumb;
   $("pageTabs").innerHTML = (TABS[meta.group] || []).map(([k, t]) =>
     `<button class="${k === r ? "on" : ""}" data-route="${k}">${t}</button>`).join("");
-  $("btnNewTask").style.display = ["tasks", "overview", "accounts"].includes(meta.group) ? "" : "none";
+  $("btnNewTask").style.display = meta.group === "tasks" ? "" : "none";   // 只在任务管理里出现
   document.title = `${meta.title} · OTAOPS`;
   ({overview: () => { loadAccounts(); loadRuns(); loadStatus(); }, accounts: loadAccounts, runs: loadRuns,
     schedule: () => { loadCollectSchedule(); loadStatus(); },
