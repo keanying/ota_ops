@@ -211,6 +211,10 @@
   .ib.red{color:var(--bad)} .ib.red:hover{background:var(--bad-50)}
   .ib.dark{color:var(--ink)}
   .ib:disabled{opacity:.25;cursor:not-allowed;background:none}
+  .xt tbody tr.clickable{cursor:pointer}
+  .xt .wrap{white-space:normal;min-width:240px}
+  .xt .err{color:var(--bad);font-size:12px;white-space:normal;margin-top:2px;max-width:420px}
+  .tbl-badge{display:inline-block;background:var(--primary-50);color:var(--primary-d);font-weight:700;font-size:12.5px;padding:5px 12px;border-radius:16px}
   .ib.spin svg{animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -423,6 +427,9 @@
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7.5a8 8 0 1011.4 0"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6L5 19a1 1 0 001 2h12a1 1 0 001-2l-5-10V3"/><path d="M7.5 15h9"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
 </svg>
 
@@ -503,10 +510,12 @@
             <input id="runSearch" placeholder="搜索任务"></label>
           <button class="btn" id="btnCatchup" title="上月目的地 / 供应商评级还缺数据的账号，立即补采">补采上月缺失评级</button>
         </div>
-        <div class="dt" style="--cols:1fr 1.6fr 2.6fr .7fr .7fr 1.1fr 20px">
-          <div class="dt-head"><span>创建时间</span><span>账号</span><span>任务</span><span>来源</span><span>耗时</span><span>状态</span>
-            <button class="tog" data-tog="runRows" title="全部展开 / 收起"><svg class="i"><use href="#i-fold"/></svg></button></div>
-          <div id="runRows"></div>
+        <div class="xt-wrap">
+          <table class="xt">
+            <thead><tr><th>创建时间</th><th>账号</th><th>任务 / 各表结果</th><th>来源</th><th>开始</th><th>耗时</th><th>状态</th>
+              <th class="acts-col">操作</th></tr></thead>
+            <tbody id="runRows"></tbody>
+          </table>
         </div>
         <div class="dt-foot">
           每页 <select class="sel" id="runPageSize"><option>10</option><option selected>20</option><option>50</option></select>
@@ -594,10 +603,12 @@
           <button class="btn" id="btnSyncDry">全部试运行</button>
           <button class="btn btn--orange" id="btnSyncAll">立即推送全部<svg class="i"><use href="#i-right"/></svg></button>
         </div>
-        <div class="dt" style="--cols:2.4fr .7fr 1fr 2fr .8fr .8fr 20px">
-          <div class="dt-head"><span>本地表 → 下游表</span><span>类型</span><span>推送字段</span><span>pkId</span><span>回溯</span><span>参与同步</span>
-            <button class="tog" data-tog="syTables" title="全部展开 / 收起"><svg class="i"><use href="#i-fold"/></svg></button></div>
-          <div id="syTables"></div>
+        <div class="xt-wrap">
+          <table class="xt">
+            <thead><tr><th>表</th><th>本地表 → 下游表</th><th>类型</th><th>推送字段</th><th>pkId</th><th>回溯</th><th>参与同步</th>
+              <th class="acts-col">操作</th></tr></thead>
+            <tbody id="syTables"></tbody>
+          </table>
         </div>
       </section>
 
@@ -645,10 +656,12 @@
           <span class="grow"></span>
           <span class="note" style="margin:0">保留最近 50 次，控制台重启后清空</span>
         </div>
-        <div class="dt" style="--cols:1fr 2.4fr .8fr .7fr 2.2fr 1fr 20px">
-          <div class="dt-head"><span>时间</span><span>内容</span><span>触发</span><span>耗时</span><span>结果</span><span>状态</span>
-            <button class="tog" data-tog="syncRows" title="全部展开 / 收起"><svg class="i"><use href="#i-fold"/></svg></button></div>
-          <div id="syncRows"></div>
+        <div class="xt-wrap">
+          <table class="xt">
+            <thead><tr><th>时间</th><th>内容</th><th>触发</th><th>各表结果</th><th>耗时</th><th>状态</th>
+              <th class="acts-col">操作</th></tr></thead>
+            <tbody id="syncRows"></tbody>
+          </table>
         </div>
       </section>
 
@@ -910,6 +923,21 @@
   </div>
 </div>
 
+<!-- ================================================================ 编辑推送字段 -->
+<div class="modal" id="mFields">
+  <div class="dlg wide">
+    <div class="dlg-hd"><h3 id="fTitle">编辑推送字段</h3><span class="tag info" id="fType">—</span>
+      <button class="x" data-close="mFields">×</button></div>
+    <div class="dlg-bd" id="fBody"></div>
+    <div class="dlg-ft">
+      <span class="left" id="fSaveState">改动自动保存</span>
+      <button class="btn" id="fDry">试运行（预览报文）</button>
+      <button class="btn btn--orange" id="fPush">立即推送这张表<svg class="i"><use href="#i-right"/></svg></button>
+      <button class="btn btn--primary" data-close="mFields">完成</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================================================================ 确认 -->
 <div class="modal" id="mConfirm">
   <div class="dlg" style="width:640px">
@@ -966,6 +994,10 @@ function fmtDur(s){
 function setSeg(el, v){ el.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v))); }
 const segVal = (el) => el.querySelector('button[aria-pressed="true"]').dataset.v;
 const acctName = (id) => { const a = accounts.find(x => x.account_id === id); return a ? (a.name || a.remark || a.account || id) : id; };
+
+const IB = (act, icon, title, cls = "", dis = false) =>
+  `<button class="ib ${cls}" data-act="${act}" title="${title}" aria-label="${title}" ${dis ? "disabled" : ""}><svg class="i"><use href="#i-${icon}"/></svg></button>`;
+const EMPTY_ROW = (n, text) => `<tr><td colspan="${n}" style="text-align:center;padding:40px 0;color:var(--muted);white-space:normal">${text}</td></tr>`;
 
 /* 通用：可展开行。点行展开 / 收起，开着的行在刷新后保持展开 */
 function bindRows(boxId, onOpen){
@@ -1633,9 +1665,8 @@ setInterval(() => {
 /* ================================================================ 运行记录 */
 const SRC = {manual:"手动", schedule:"定时", catchup:"补采", login:"首采"};
 const RUN_CLS = {queued:"info", running:"info", success:"ok", partial:"warn", failed:"bad", stopped:"bad", skipped:""};
-const canRerun = (r) => !["queued","running"].includes(r.status) && (r.mode === "day" || r.mode === "month");
+const canRerun = (r) => !["queued","running"].includes(r.status) && ["day", "month", "mixed"].includes(r.mode);
 let runFilter = "all", runPage = 1;
-const tailCache = {};
 
 async function loadRuns(){
   try { runs = (await api("/api/runs?limit=500")).runs || []; } catch (e){ return; }
@@ -1667,39 +1698,22 @@ function renderRuns(){
   $("runPager").innerHTML = pages > 1 ? nums.map(n => n === "…" ? `<span class="muted">…</span>`
     : `<button class="${n === runPage ? "on" : ""}" data-p="${n}">${n}</button>`).join("") : "";
   $("runRows").innerHTML = shown.length ? shown.map(r => `
-    <div class="${rowCls("runRows", r.run_id)}" data-id="${esc(r.run_id)}">
-      <div class="dt-main">
-        <span class="mono" style="font-weight:600">${esc(r.created_at.slice(5, 16))}</span>
-        <span class="ellip">${esc(acctName(r.account_id))}<span class="sub2 mono">${esc(r.account_id)}</span></span>
-        <span class="ellip">${esc(r.label)}${jobChips(r)}</span>
-        <span style="font-weight:500">${esc(SRC[r.source] || r.source)}</span>
-        <span class="mono" style="font-weight:500">${fmtDur(r.duration)}</span>
-        <span><span class="tag ${RUN_CLS[r.status] || ""}">${r.status === "running" ? '<span class="dot info beat"></span>' : ""}${esc(r.status_text)}</span></span>
-        ${CARET}
-      </div>
-      <div class="dt-detail">
-        <div class="kvs">
-          <div class="kv"><span>开始</span><b class="mono">${esc(r.started_at || "—")}</b></div>
-          <div class="kv"><span>结束</span><b class="mono">${esc(r.finished_at || "—")}</b></div>
-          <div class="kv"><span>参数</span><b class="mono">${esc(describeRun(r))}</b></div>
-          <div class="kv"><span>日志</span><b>${r.has_log ? `${r.lines} 行` : "无"}</b></div>
-          ${Object.entries(r.job_results || {}).map(([j, x]) => `<div class="kv"><span>${JOB_NAME[j] || j}</span>
-            <b style="color:${x.status === "failed" ? "var(--bad)" : !x.written ? "#B26A00" : "var(--ok)"}">${
-              x.status === "failed" ? "失败" : !x.written ? "无数据" : x.status === "partial" ? "部分完成" : "成功"} · 采集 ${x.fetched} / 写入 ${x.written}</b></div>`).join("")}
-        </div>
-        ${r.detail ? `<p class="note" style="margin:-4px 0 12px;color:${r.status === "failed" ? "var(--bad)" : "var(--ink-2)"}">${esc(r.detail)}</p>` : ""}
-        ${r.has_log ? `<div class="tail" data-tail="${esc(r.run_id)}">${tailCache[r.run_id] || '<span style="color:#6E7891">加载最近日志…</span>'}</div>` : ""}
-        <div class="detail-acts">
-          ${r.has_log ? `<button class="btn btn--orange" data-act="log">查看完整日志${ICON("right")}</button>` : ""}
-          ${canRerun(r) ? `<button class="btn" data-act="rerun">重跑</button>` : ""}
-          ${r.status === "running" ? `<button class="btn btn--danger" data-act="stop">停止</button>` : ""}
-          ${r.status === "queued" ? `<button class="btn btn--danger" data-act="stop">取消排队</button>` : ""}
-        </div>
-      </div>
-    </div>`).join("")
-    : `<div class="dt-empty">没有运行记录。点右上角「新建采集任务」开始。</div>`;
-  shown.filter(r => opened.runRows.has(r.run_id) && r.has_log &&
-    (!tailCache[r.run_id] || ["queued","running"].includes(r.status))).forEach(r => loadTail(r));
+    <tr class="clickable" data-id="${esc(r.run_id)}" title="点击查看日志">
+      <td class="when">${esc(r.created_at.slice(5, 16))}</td>
+      <td class="who"><b>${esc(acctName(r.account_id))}</b><small>${esc(r.account_id)}</small></td>
+      <td class="wrap"><b style="font-weight:600;color:var(--ink)">${esc(r.label)}</b>${jobChips(r)}
+        ${r.detail && ["failed","skipped","stopped"].includes(r.status) ? `<div class="err">${esc(r.detail)}</div>` : ""}</td>
+      <td>${esc(SRC[r.source] || r.source)}</td>
+      <td class="when">${esc((r.started_at || "—").slice(5, 19))}</td>
+      <td class="when">${fmtDur(r.duration)}</td>
+      <td><span class="tag ${RUN_CLS[r.status] || ""}">${r.status === "running" ? '<span class="dot info beat"></span>' : ""}${esc(r.status_text)}</span></td>
+      <td class="acts-col"><span class="ibtns">
+        ${IB("log", "eye", "查看日志", "dark", !r.has_log)}
+        ${IB("rerun", "redo", "按原参数重跑", "", !canRerun(r))}
+        ${IB("stop", "power", r.status === "queued" ? "取消排队" : "停止", "red", !["queued","running"].includes(r.status))}
+      </span></td>
+    </tr>`).join("")
+    : EMPTY_ROW(8, "没有运行记录。点右上角「新建采集任务」开始。");
 }
 const JST = {success: ["ok", "✓"], partial: ["warn", "部分"], failed: ["bad", "✗"], skipped: ["", "跳过"], pending: ["", "…"]};
 function jobChips(r){
@@ -1722,23 +1736,17 @@ function describeRun(r){
   if (jobs.some(j => j !== "kylin")) out.push("评级 " + (p.start_month ? `${p.start_month} ~ ${p.end_month}` : (p.month || "上个月")));
   return out.join(" / ") || "—";
 }
-async function loadTail(r){
-  try {
-    const d = await api(`/api/runs/${encodeURIComponent(r.run_id)}/log?after=${Math.max(0, (r.lines || 0) - 12)}`);
-    tailCache[r.run_id] = d.lines.map(l => `<div><span class="t">${esc(l.at)}</span><span class="${esc(l.level)}">${esc(l.message)}</span></div>`).join("")
-      || '<span style="color:#6E7891">没有日志</span>';
-    const el = document.querySelector(`[data-tail="${CSS.escape(r.run_id)}"]`);
-    if (el){ el.innerHTML = tailCache[r.run_id]; el.scrollTop = el.scrollHeight; }
-  } catch (e){ /* 忽略 */ }
-}
-bindRows("runRows", (id) => { const r = runs.find(x => x.run_id === id); if (r && r.has_log) loadTail(r); });
 $("runRows").addEventListener("click", async (e) => {
-  const btn = e.target.closest("[data-act]"); if (!btn) return;
-  const id = btn.closest(".dt-row").dataset.id;
-  if (btn.dataset.act === "log") openRunLog(id);
-  if (btn.dataset.act === "rerun") rerun(id);
-  if (btn.dataset.act === "stop"){
-    try { const r = await post(`/api/runs/${encodeURIComponent(id)}/stop`); toast(r.message); loadRuns(); }
+  const tr = e.target.closest("tr[data-id]"); if (!tr) return;
+  const btn = e.target.closest("[data-act]");
+  const id = tr.dataset.id;
+  if (btn && btn.disabled) return;
+  const act = btn ? btn.dataset.act : "log";
+  const r = runs.find(x => x.run_id === id);
+  if (act === "log"){ if (r && !r.has_log){ toast(r.detail || "这条记录没有运行日志"); return; } openRunLog(id); }
+  if (act === "rerun") rerun(id);
+  if (act === "stop"){
+    try { const x = await post(`/api/runs/${encodeURIComponent(id)}/stop`); toast(x.message); loadRuns(); }
     catch (err){ toast(err.message); }
   }
 });
@@ -2061,31 +2069,38 @@ function renderSyncJobs(){
   const list = syncJobs.filter(groups[syncFilter]);
   $("syncRows").innerHTML = list.length ? list.map(j => {
     const [st, cls] = SYNC_STATUS[j.status] || [j.status, ""];
-    const brief = (j.tables || []).map(t => `${t.label || t.table} ${t.rows} 行${t.ok ? "" : " ✗"}`).join(" · ");
+    const tables = (j.tables || []).map(t =>
+      `<span class="jchip ${t.ok ? (t.rows ? "ok" : "warn") : "bad"}" title="${esc(t.table)}${t.error ? "：" + esc(t.error) : ""}">${esc(t.label || t.table)} ${t.ok ? "✓ " + t.rows : "✗"}</span>`).join("");
+    const errs = (j.tables || []).filter(t => !t.ok && t.error).map(t => `${t.label || t.table}：${t.error}`);
+    if (j.error) errs.push(j.error);
     return `
-    <div class="${rowCls("syncRows", j.id)}" data-id="${esc(j.id)}">
-      <div class="dt-main">
-        <span class="mono" style="font-weight:600">${esc(j.created_at.slice(5, 16))}</span>
-        <span class="ellip">${esc(j.label)}${j.dry_run ? ' <span class="tag">试运行</span>' : ""}</span>
-        <span style="font-weight:500">${esc(SYNC_REASON[j.reason] || j.reason)}</span>
-        <span class="mono" style="font-weight:500">${j.duration ? j.duration + "s" : "—"}</span>
-        <span class="ellip" style="font-weight:500">${esc(brief || j.error || (j.status === "running" ? "推送中…" : "无数据"))}</span>
-        <span><span class="tag ${cls}">${j.status === "running" ? '<span class="dot info beat"></span>' : ""}${st}</span></span>
-        ${CARET}
-      </div>
-      <div class="dt-detail">
-        ${(j.tables || []).length ? `<div class="kvs">${j.tables.map(t => `
-          <div class="kv"><span>${esc(t.label ? t.label + " · " + t.table : t.table)}</span><b style="color:${t.ok ? "var(--ok)" : "var(--bad)"}">${t.rows} 行 · ${t.ok ? "成功" : "失败"}</b>
-            ${t.error ? `<span style="color:var(--bad);margin-top:2px">${esc(t.error)}</span>` : ""}</div>`).join("")}</div>`
-          : (j.error ? `<p class="note" style="color:var(--bad);margin:0 0 12px">${esc(j.error)}</p>` : "")}
-        <div class="detail-acts"><button class="btn btn--orange" data-act="log">查看推送日志${ICON("right")}</button></div>
-      </div>
-    </div>`;
-  }).join("") : `<div class="dt-empty">暂无推送记录</div>`;
+    <tr class="clickable" data-id="${esc(j.id)}" title="点击查看推送日志">
+      <td class="when">${esc(j.created_at.slice(5, 16))}</td>
+      <td class="wrap"><b style="font-weight:600;color:var(--ink)">${esc(j.label)}</b>${j.dry_run ? ' <span class="tag">试运行</span>' : ""}</td>
+      <td>${esc(SYNC_REASON[j.reason] || j.reason)}</td>
+      <td class="wrap"><span class="jchips">${tables || (j.status === "running" ? '<span class="jchip info">推送中…</span>' : '<span class="muted">—</span>')}</span>
+        ${errs.length ? `<div class="err">${esc(errs[0])}</div>` : ""}</td>
+      <td class="when">${j.duration ? j.duration + "s" : "—"}</td>
+      <td><span class="tag ${cls}">${j.status === "running" ? '<span class="dot info beat"></span>' : ""}${st}</span></td>
+      <td class="acts-col"><span class="ibtns">
+        ${IB("log", "eye", "查看推送日志", "dark")}
+        ${IB("result", "doc", "查看结果与报文", "", ["queued","running"].includes(j.status))}
+      </span></td>
+    </tr>`;
+  }).join("") : EMPTY_ROW(7, "暂无推送记录");
 }
-bindRows("syncRows");
-$("syncRows").addEventListener("click", (e) => {
-  const btn = e.target.closest('[data-act="log"]'); if (btn) openSyncLog(btn.closest(".dt-row").dataset.id);
+$("syncRows").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr[data-id]"); if (!tr) return;
+  const btn = e.target.closest("[data-act]");
+  if (btn && btn.disabled) return;
+  if (btn && btn.dataset.act === "result"){
+    try {
+      const d = await api(`/api/sync/jobs/${encodeURIComponent(tr.dataset.id)}/log?after=999999`);
+      if (d.result) showSyncResult(d.job.label, d.result); else toast("还没有结果");
+    } catch (err){ toast(err.message); }
+    return;
+  }
+  openSyncLog(tr.dataset.id);
 });
 
 /* 铃铛：需要人处理的事 */
@@ -2128,158 +2143,178 @@ async function loadSync(){
   const on = d.enabled && d.key_set && d.url;
   $("syncTag").textContent = on ? "推送已启用" : "推送未启用";
   $("syncTag").className = "tag " + (on ? "ok" : "warn");
+  initSyncTables();
   renderSyncTables();
 }
-function renderSyncTables(){
-  const d = syncMeta, box = $("syTables");
-  box.innerHTML = "";
-  for (const [key, meta] of Object.entries(d.tables_meta || {})){
-    const t = (d.tables || {})[key] || {};
-    const cols = meta.columns || [];
+/* 每张表的推送设置放在 syncTables 里（不再从页面 DOM 读），编辑弹窗改它、自动保存读它 */
+let syncTables = {};
+function initSyncTables(){
+  syncTables = {};
+  for (const [key, meta] of Object.entries(syncMeta.tables_meta || {})){
+    const t = (syncMeta.tables || {})[key] || {};
+    const cols = (meta.columns || []).map(c => c.name);
     const configured = !!(t.fields && t.fields.length);
-    const chosen = new Set(configured ? t.fields : cols.map(c => c.name).filter(n => !AUDIT.test(n)));
-    const aliases = t.aliases || {};
-    const pk = new Set(t.pk && t.pk.length ? t.pk : (d.default_pk[key] || []));
-    const daily = meta.period === "daily";
-    const row = document.createElement("div");
-    row.className = rowCls("syTables", key) + " tcard"; row.dataset.id = key; row.dataset.key = key;
-    row.dataset.configured = configured ? "1" : "";
-    row.innerHTML = `
-      <div class="dt-main">
-        <span class="ellip mono" style="font-weight:700;color:var(--ink)">${esc(meta.name)}
-          <span class="sub2" data-f="rtShow">→ ${esc(t.remote_table || meta.name)} · ${esc(meta.comment)}</span></span>
-        <span><span class="tag info">${daily ? "日表" : "月表"}</span></span>
-        <span data-f="countShort" class="mono"></span>
-        <span class="ellip mono" style="font-weight:500" data-f="pkShow"></span>
-        <span data-f="lbShow" style="font-weight:500"></span>
-        <span><label class="switch" title="参与「立即推送全部」和定时补推"><input type="checkbox" data-f="on" ${t.enabled !== false ? "checked" : ""}><span></span></label></span>
-        ${CARET}
-      </div>
-      <div class="dt-detail">
-        <div class="cols2" style="gap:0 24px">
-          <div class="field"><label>下游表名</label>
-            <input data-f="rt" placeholder="${esc(meta.name)}（留空用本地表名）" value="${esc(t.remote_table || "")}"></div>
-          <div class="field"><label>回溯</label>
-            <input class="num" data-f="lb" type="number" min="1" max="120" value="${t.lookback || (daily ? 7 : 2)}">
-            <span class="unit">${daily ? "天，按 transaction_date，到昨天为止" : "个月，从上个月往前算"}</span></div>
-        </div>
-        <div class="field" style="align-items:flex-start"><label style="padding-top:4px">推送字段</label>
-          <div style="flex:1">
-            <div class="btn-row" style="margin-bottom:10px">
-              <b data-f="count" style="font-size:13px;font-weight:600"></b><span class="grow"></span>
-              <button class="btn btn--sm" data-f="all">全选</button>
-              <button class="btn btn--sm" data-f="none">全不选</button>
-              <button class="btn btn--sm" data-f="nometa">去掉审计字段</button>
-              <button class="btn btn--sm" data-f="pkonly">只留主键</button>
-            </div>
-            <div class="chips cols" data-f="cols">${cols.map(c =>
-              `<button type="button" class="chip" data-col="${esc(c.name)}" aria-pressed="${chosen.has(c.name)}"
-                 title="${esc(c.comment)} · ${esc(c.type)}">${esc(c.name)}<small>${esc(c.comment.replace(/（.*?）/g, "").slice(0, 8))}</small></button>`).join("")}</div>
-            <p class="note" data-f="hint"></p>
-          </div></div>
-        <div class="field" style="align-items:flex-start"><label style="padding-top:4px">pkId</label>
-          <div style="flex:1">
-            <div class="chips" data-f="pk">${cols.map(c =>
-              `<button type="button" class="chip" data-col="${esc(c.name)}" aria-pressed="${pk.has(c.name)}">${esc(c.name)}</button>`).join("")}</div>
-            <p class="note">下游按这几个字段判断新增还是更新，必须在推送字段里。本地唯一键：<span class="mono">${esc((meta.unique_key || []).join(", "))}</span></p>
-          </div></div>
-        <details class="more" ${Object.keys(aliases).length ? "open" : ""}>
-          <summary>下游字段名（字段名和下游不一样时才需要填）</summary>
-          <table class="ftbl">
-            <thead><tr><th>本地字段</th><th>类型</th><th>说明</th><th style="width:240px">下游字段名</th></tr></thead>
-            <tbody>${cols.map(c => `
-              <tr data-col="${esc(c.name)}" class="${chosen.has(c.name) ? "" : "off"}">
-                <td class="mono">${esc(c.name)}</td><td class="mono muted">${esc(c.type)}</td><td class="muted">${esc(c.comment)}</td>
-                <td><input class="inp" data-f="alias" placeholder="${esc(c.name)}" value="${esc(aliases[c.name] || "")}"></td>
-              </tr>`).join("")}</tbody>
-          </table>
-        </details>
-        <div class="detail-acts" style="margin-top:16px">
-          <button class="btn" data-f="dry1">试运行（预览报文）</button>
-          <button class="btn btn--orange" data-f="push1">立即推送这张表${ICON("right")}</button>
-        </div>
-      </div>`;
-    box.appendChild(row);
-    updateCount(row);
+    syncTables[key] = {
+      enabled: t.enabled !== false, remote_table: t.remote_table || "",
+      lookback: t.lookback || (meta.period === "daily" ? 7 : 2),
+      pk: t.pk && t.pk.length ? [...t.pk] : [...(syncMeta.default_pk[key] || [])],
+      fields: configured ? [...t.fields] : cols.filter(n => !AUDIT.test(n)),
+      aliases: {...(t.aliases || {})}, configured,
+    };
   }
 }
-const chosenCols = (card) => [...card.querySelectorAll('[data-f="cols"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
-const pkCols = (card) => [...card.querySelectorAll('[data-f="pk"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
-function updateCount(card){
-  const all = card.querySelectorAll('[data-f="cols"] .chip').length;
-  const on = chosenCols(card), set = new Set(on), pk = pkCols(card);
-  const miss = pk.filter(p => !set.has(p));
-  card.querySelectorAll(".ftbl tr[data-col]").forEach(tr => tr.classList.toggle("off", !set.has(tr.dataset.col)));
-  card.querySelector('[data-f="count"]').innerHTML = `已选 <b style="color:var(--primary-d)">${on.length}</b> / ${all} 个字段`;
-  card.querySelector('[data-f="countShort"]').innerHTML = `<b style="color:var(--ink)">${on.length}</b> / ${all}`;
-  card.querySelector('[data-f="pkShow"]').textContent = pk.join(", ") || "—";
-  const lb = card.querySelector('[data-f="lb"]').value || 1;
-  card.querySelector('[data-f="lbShow"]').textContent = `${lb} ${syncMeta.tables_meta[card.dataset.key].period === "daily" ? "天" : "个月"}`;
-  const rt = card.querySelector('[data-f="rt"]').value.trim() || syncMeta.tables_meta[card.dataset.key].name;
-  card.querySelector('[data-f="rtShow"]').textContent = `→ ${rt} · ${syncMeta.tables_meta[card.dataset.key].comment}`;
-  const hint = card.querySelector('[data-f="hint"]');
-  if (miss.length){
-    hint.innerHTML = `<span style="color:var(--bad)">主键 ${esc(miss.join(", "))} 没选进推送字段，不会保存</span>`;
-  } else if (!card.dataset.configured){
-    hint.innerHTML = `<span style="color:var(--warn)">这张表还没选过字段：默认推除采集 / 创建 / 更新时间外的 ${on.length} 个字段。点掉下游没登记的字段即可（自动保存）。</span>`;
-  } else {
-    hint.textContent = "只推选中的字段（蓝色），点击切换，改动自动保存。表里以后新增的字段不会自动推，需要来这里勾选。";
-  }
+const TBL_LABEL = {kylin_daily: "交易数据", destination_rating: "目的地评级", supplier_rate_score: "供应商评级"};
+function renderSyncTables(){
+  const rows = Object.entries(syncMeta.tables_meta || {}).map(([key, meta]) => {
+    const t = syncTables[key], daily = meta.period === "daily";
+    const total = (meta.columns || []).length;
+    const miss = t.pk.filter(p => !t.fields.includes(p));
+    return `
+    <tr data-id="${esc(key)}">
+      <td><span class="tbl-badge">${TBL_LABEL[key] || key}</span></td>
+      <td class="who"><b class="mono" style="font-size:13px">${esc(meta.name)}</b><small>→ ${esc(t.remote_table || meta.name)}</small></td>
+      <td><span class="tag info">${daily ? "日表" : "月表"}</span></td>
+      <td><b style="color:var(--ink)">${t.fields.length}</b> <span class="muted">/ ${total}</span>
+        ${!t.configured ? '<div class="err" style="color:#B26A00">未选过，默认不推记账字段</div>' : ""}</td>
+      <td class="wrap mono" style="font-size:12px">${esc(t.pk.join(", ") || "—")}
+        ${miss.length ? `<div class="err">主键 ${esc(miss.join(", "))} 未勾选推送</div>` : ""}</td>
+      <td>${t.lookback} ${daily ? "天" : "个月"}</td>
+      <td><label class="switch" title="参与「立即推送全部」、定时补推和采集后推送"><input type="checkbox" data-f="on" ${t.enabled ? "checked" : ""}><span></span></label></td>
+      <td class="acts-col"><span class="ibtns">
+        ${IB("edit", "pen", "编辑推送字段 / pkId / 下游名")}
+        ${IB("dry", "flask", "试运行（预览报文，不推送）", "dark")}
+        ${IB("push", "up", "立即推送这张表", "orange")}
+      </span></td>
+    </tr>`;
+  });
+  $("syTables").innerHTML = rows.join("") || EMPTY_ROW(8, "没有可同步的表");
 }
-bindRows("syTables");
+$("syTables").addEventListener("change", (e) => {
+  if (e.target.dataset.f !== "on") return;
+  syncTables[e.target.closest("tr").dataset.id].enabled = e.target.checked;
+  scheduleAutoSave();
+});
 $("syTables").addEventListener("click", (e) => {
-  const card = e.target.closest(".tcard"); if (!card) return;
+  const btn = e.target.closest("[data-act]"); if (!btn) return;
+  const key = btn.closest("tr").dataset.id, name = syncMeta.tables_meta[key].name;
+  if (btn.dataset.act === "edit") openFieldEditor(key);
+  if (btn.dataset.act === "dry") runSync("all", true, [key], name);
+  if (btn.dataset.act === "push") confirmPush([key]).then(ok => { if (ok) runSync("all", false, [key], name); });
+});
+
+/* ---- 编辑推送字段弹窗 ---- */
+let editingTable = null;
+function openFieldEditor(key){
+  editingTable = key;
+  const meta = syncMeta.tables_meta[key], t = syncTables[key], daily = meta.period === "daily";
+  $("fTitle").textContent = `编辑推送字段 · ${TBL_LABEL[key] || ""} ${meta.name}`;
+  $("fType").textContent = daily ? "日表" : "月表";
+  const cols = meta.columns || [];
+  $("fBody").innerHTML = `
+    <div class="cols2" style="gap:0 24px">
+      <div class="field"><label>下游表名</label>
+        <input data-f="rt" placeholder="${esc(meta.name)}（留空用本地表名）" value="${esc(t.remote_table)}"></div>
+      <div class="field"><label>回溯</label>
+        <input class="num" data-f="lb" type="number" min="1" max="120" value="${t.lookback}">
+        <span class="unit">${daily ? "天，按 transaction_date，到昨天为止" : "个月，从上个月往前算"}</span></div>
+    </div>
+    <div class="field" style="align-items:flex-start"><label style="padding-top:4px">推送字段</label>
+      <div style="flex:1">
+        <div class="btn-row" style="margin-bottom:10px">
+          <b data-f="count" style="font-size:13px;font-weight:600"></b><span class="grow"></span>
+          <button class="btn btn--sm" data-f="all">全选</button>
+          <button class="btn btn--sm" data-f="none">全不选</button>
+          <button class="btn btn--sm" data-f="nometa">去掉审计字段</button>
+          <button class="btn btn--sm" data-f="pkonly">只留主键</button>
+        </div>
+        <div class="chips cols" data-f="cols">${cols.map(c =>
+          `<button type="button" class="chip" data-col="${esc(c.name)}" aria-pressed="${t.fields.includes(c.name)}"
+             title="${esc(c.comment)} · ${esc(c.type)}">${esc(c.name)}<small>${esc(c.comment.replace(/（.*?）/g, "").slice(0, 8))}</small></button>`).join("")}</div>
+        <p class="note" data-f="hint"></p>
+      </div></div>
+    <div class="field" style="align-items:flex-start"><label style="padding-top:4px">pkId</label>
+      <div style="flex:1">
+        <div class="chips" data-f="pk">${cols.map(c =>
+          `<button type="button" class="chip" data-col="${esc(c.name)}" aria-pressed="${t.pk.includes(c.name)}">${esc(c.name)}</button>`).join("")}</div>
+        <p class="note">下游按这几个字段判断新增还是更新，必须在推送字段里。本地唯一键：<span class="mono">${esc((meta.unique_key || []).join(", "))}</span></p>
+      </div></div>
+    <details class="more" ${Object.keys(t.aliases).length ? "open" : ""}>
+      <summary>下游字段名（字段名和下游不一样时才需要填）</summary>
+      <table class="ftbl">
+        <thead><tr><th>本地字段</th><th>类型</th><th>说明</th><th style="width:240px">下游字段名</th></tr></thead>
+        <tbody>${cols.map(c => `
+          <tr data-col="${esc(c.name)}">
+            <td class="mono">${esc(c.name)}</td><td class="mono muted">${esc(c.type)}</td><td class="muted">${esc(c.comment)}</td>
+            <td><input class="inp" data-f="alias" placeholder="${esc(c.name)}" value="${esc(t.aliases[c.name] || "")}"></td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </details>`;
+  paintFieldEditor();
+  openModal("mFields");
+}
+function readFieldEditor(){
+  const t = syncTables[editingTable], body = $("fBody");
+  t.fields = [...body.querySelectorAll('[data-f="cols"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
+  t.pk = [...body.querySelectorAll('[data-f="pk"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
+  t.remote_table = body.querySelector('[data-f="rt"]').value.trim();
+  t.lookback = parseInt(body.querySelector('[data-f="lb"]').value, 10) || 1;
+  t.aliases = {};
+  body.querySelectorAll('[data-f="alias"]').forEach(i => {
+    const v = i.value.trim(), col = i.closest("tr").dataset.col;
+    if (v && v !== col) t.aliases[col] = v;
+  });
+}
+function paintFieldEditor(){
+  const t = syncTables[editingTable], body = $("fBody");
+  const total = body.querySelectorAll('[data-f="cols"] .chip').length;
+  const miss = t.pk.filter(p => !t.fields.includes(p));
+  body.querySelectorAll(".ftbl tr[data-col]").forEach(tr => tr.classList.toggle("off", !t.fields.includes(tr.dataset.col)));
+  body.querySelector('[data-f="count"]').innerHTML = `已选 <b style="color:var(--primary-d)">${t.fields.length}</b> / ${total} 个字段`;
+  const hint = body.querySelector('[data-f="hint"]');
+  if (miss.length) hint.innerHTML = `<span style="color:var(--bad)">主键 ${esc(miss.join(", "))} 没选进推送字段，不会保存</span>`;
+  else if (!t.configured) hint.innerHTML = `<span style="color:var(--warn)">这张表还没选过字段：默认推除采集 / 创建 / 更新时间外的字段。点掉下游没登记的字段即可（自动保存）。</span>`;
+  else hint.textContent = "只推选中的字段（蓝色），点击切换，改动自动保存。表里以后新增的字段不会自动推，需要来这里勾选。";
+}
+function fieldEditorChanged(){ readFieldEditor(); paintFieldEditor(); renderSyncTables(); scheduleAutoSave(); }
+$("fBody").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
   if (chip){
     chip.setAttribute("aria-pressed", String(chip.getAttribute("aria-pressed") !== "true"));
     if (chip.closest('[data-f="pk"]') && chip.getAttribute("aria-pressed") === "true"){
-      const c = card.querySelector(`[data-f="cols"] .chip[data-col="${CSS.escape(chip.dataset.col)}"]`);
+      const c = $("fBody").querySelector(`[data-f="cols"] .chip[data-col="${CSS.escape(chip.dataset.col)}"]`);
       if (c) c.setAttribute("aria-pressed", "true");
     }
-    updateCount(card); scheduleAutoSave(); return;
+    fieldEditorChanged(); return;
   }
-  const btn = e.target.closest("[data-f]");
-  const f = btn && btn.dataset.f;
-  if (f === "dry1" || f === "push1"){
-    const name = syncMeta.tables_meta[card.dataset.key].name;
-    if (f === "dry1"){ runSync("all", true, [card.dataset.key], name); return; }
-    confirmPush([card.dataset.key]).then(ok => { if (ok) runSync("all", false, [card.dataset.key], name); });
-    return;
-  }
+  const f = e.target.closest("[data-f]") && e.target.closest("[data-f]").dataset.f;
   if (["all","none","nometa","pkonly"].includes(f)){
-    const pk = new Set(pkCols(card));
-    card.querySelectorAll('[data-f="cols"] .chip').forEach(c => {
+    const pk = new Set(syncTables[editingTable].pk);
+    $("fBody").querySelectorAll('[data-f="cols"] .chip').forEach(c => {
       const on = c.getAttribute("aria-pressed") === "true", col = c.dataset.col;
       c.setAttribute("aria-pressed", String(f === "all" ? true : f === "none" ? false : f === "pkonly" ? pk.has(col) : on && !AUDIT.test(col)));
     });
-    updateCount(card); scheduleAutoSave();
+    fieldEditorChanged();
   }
 });
-$("syTables").addEventListener("input", (e) => {
-  if (!e.target.matches('[data-f="alias"], [data-f="rt"], [data-f="lb"], [data-f="on"]')) return;
-  updateCount(e.target.closest(".tcard"));
-  scheduleAutoSave();
+$("fBody").addEventListener("input", (e) => {
+  if (e.target.matches('[data-f="alias"], [data-f="rt"], [data-f="lb"]')) fieldEditorChanged();
 });
+$("fDry").onclick = () => { const k = editingTable; runSync("all", true, [k], syncMeta.tables_meta[k].name); };
+$("fPush").onclick = () => { const k = editingTable;
+  confirmPush([k]).then(ok => { if (ok) runSync("all", false, [k], syncMeta.tables_meta[k].name); }); };
 
 function collectSyncPatch(){
   const tables = {};
   let err = "";
-  document.querySelectorAll("#syTables .tcard").forEach(card => {
-    const key = card.dataset.key;
-    const on = chosenCols(card), pk = pkCols(card);
-    const aliases = {};
-    card.querySelectorAll('[data-f="alias"]').forEach(i => {
-      const v = i.value.trim(), col = i.closest("tr").dataset.col;
-      if (v && v !== col) aliases[col] = v;
-    });
-    const enabled = card.querySelector('[data-f="on"]').checked;
-    if (enabled && !on.length) err = err || `${key}：至少勾选一个字段`;
-    if (enabled && !pk.length) err = err || `${key}：pkId 至少选一个`;
-    const miss = pk.filter(p => !on.includes(p));
-    if (enabled && miss.length) err = err || `${key}：主键 ${miss.join(", ")} 没有勾选推送`;
-    tables[key] = {enabled, remote_table: card.querySelector('[data-f="rt"]').value.trim(),
-      lookback: parseInt(card.querySelector('[data-f="lb"]').value, 10) || 1, pk, fields: on, aliases};
-  });
+  for (const [key, t] of Object.entries(syncTables)){
+    const name = TBL_LABEL[key] || key;
+    if (t.enabled && !t.fields.length) err = err || `${name}：至少勾选一个字段`;
+    if (t.enabled && !t.pk.length) err = err || `${name}：pkId 至少选一个`;
+    const miss = t.pk.filter(p => !t.fields.includes(p));
+    if (t.enabled && miss.length) err = err || `${name}：主键 ${miss.join(", ")} 没有勾选推送`;
+    tables[key] = {enabled: t.enabled, remote_table: t.remote_table, lookback: t.lookback,
+                   pk: t.pk, fields: t.fields, aliases: t.aliases};
+  }
   return {err, patch: {
     enabled: $("syEnabled").checked,
     url: $("syUrl").value.trim(),
@@ -2293,7 +2328,7 @@ function collectSyncPatch(){
   }};
 }
 function setSaveState(text, color){
-  for (const id of ["syncSaveState", "apiSaveState"]){ $(id).textContent = text; $(id).style.color = color || "var(--muted)"; }
+  for (const id of ["syncSaveState", "apiSaveState", "fSaveState"]){ $(id).textContent = text; $(id).style.color = color || "var(--muted)"; }
 }
 let autoSaveTimer = null;
 async function saveSync(quiet, auto){
@@ -2306,8 +2341,10 @@ async function saveSync(quiet, auto){
     setSaveState(`已${auto ? "自动" : ""}保存 ${new Date().toTimeString().slice(0, 8)}`, "var(--ok)");
     if (!quiet) toast(`已保存，下次补推：日 ${r.next_daily || "未启用"} · 月 ${r.next_monthly || "未启用"}`);
     if (auto){
-      syncMeta.tables = patch.tables;      // 自动保存不重画：正在输入的字段名不能被打断
-      document.querySelectorAll("#syTables .tcard").forEach(c => { c.dataset.configured = "1"; updateCount(c); });
+      syncMeta.tables = patch.tables;      // 自动保存不重画弹窗：正在输入的字段名不能被打断
+      Object.values(syncTables).forEach(t => { t.configured = true; });
+      renderSyncTables();
+      if (editingTable && $("mFields").classList.contains("on")) paintFieldEditor();
     } else await loadSync();
     return true;
   } catch (e){ setSaveState(`保存失败：${e.message}`, "var(--bad)"); toast(e.message); return false; }
@@ -2364,13 +2401,13 @@ function pushWindow(period, lookback){
 }
 function confirmPush(keys){
   const rows = [];
-  document.querySelectorAll("#syTables .tcard").forEach(card => {
-    const key = card.dataset.key, meta = (syncMeta.tables_meta || {})[key] || {};
-    if (keys ? !keys.includes(key) : !card.querySelector('[data-f="on"]').checked) return;
-    const remote = card.querySelector('[data-f="rt"]').value.trim() || meta.name;
-    const lb = parseInt(card.querySelector('[data-f="lb"]').value, 10) || 1;
-    rows.push([meta.name === remote ? meta.name : `${meta.name} → ${remote}`, `${pushWindow(meta.period, lb)} · ${chosenCols(card).length} 个字段`]);
-  });
+  for (const [key, t] of Object.entries(syncTables)){
+    const meta = (syncMeta.tables_meta || {})[key] || {};
+    if (keys ? !keys.includes(key) : !t.enabled) continue;
+    const remote = t.remote_table || meta.name;
+    rows.push([`${TBL_LABEL[key] || ""} ${meta.name === remote ? meta.name : meta.name + " → " + remote}`,
+               `${pushWindow(meta.period, t.lookback)} · ${t.fields.length} 个字段`]);
+  }
   if (!rows.length){ toast("没有参与同步的表"); return Promise.resolve(false); }
   return askConfirm({
     title: keys ? "立即推送这张表" : "立即推送全部",
