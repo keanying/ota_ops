@@ -45,7 +45,11 @@
   svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* ================================================================ 外框 */
-  .app{display:grid;grid-template-columns:108px minmax(0,1fr);height:calc(100vh - 44px);
+  /* 整体缩放：桌面宽度下按 80% 排版（浏览器 100% 时看到的就是原来 80% 的效果，一屏放得下）。
+     手机宽度不缩放。vh 在 zoom 下也会被缩放，所以高度要除回去 */
+  :root{--z:1}
+  @media (min-width:901px){ :root{--z:.8} body{zoom:var(--z)} }
+  .app{display:grid;grid-template-columns:108px minmax(0,1fr);height:calc(100vh / var(--z) - 44px);
     background:var(--panel);border-radius:34px;box-shadow:var(--shadow);overflow:hidden}
 
   /* ---- 图标侧栏（参考稿：细栏 + 圆形按钮） ---- */
@@ -462,7 +466,7 @@
   .logbox div{display:flex;gap:12px;white-space:pre-wrap;word-break:break-word}
   .logbox .t{color:#6E7891;flex:none}
   .logbox .warn{color:#F5B544} .logbox .error{color:#FF8A8A} .logbox .done{color:#4FD3A0}
-  #runLog{height:min(60vh,620px);border-radius:12px}
+  #runLog{height:min(60vh / var(--z),620px);border-radius:12px}
 
   /* 浏览器弹窗 */
   .bw{display:grid;grid-template-columns:310px minmax(0,1fr);flex:1;min-height:0}
@@ -890,7 +894,6 @@
           </div>
         </div>
 
-        <div class="section-t" style="letter-spacing:.12em">近 7 天采集</div>
         <div class="days" id="ovDays"></div>
       </section>
 
@@ -3175,8 +3178,11 @@ loadAccounts().then(() => {
     if (tip && tip.dataset.for === el.textContent) return;
     hide(); tip = document.createElement("div"); tip.className = "tipx"; tip.textContent = el.textContent.trim(); tip.dataset.for = el.textContent;
     document.body.appendChild(tip);
-    const r = el.getBoundingClientRect(), w = tip.offsetWidth;
-    tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px";
+    // body 有整体缩放（zoom）：取到的坐标是屏幕像素，写回 left/top 前要换回缩放后的 CSS 像素
+    const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    const b = el.getBoundingClientRect(), r = {left: b.left / z, top: b.top / z, bottom: b.bottom / z, width: b.width / z};
+    const w = tip.offsetWidth, vw = innerWidth / z;
+    tip.style.left = Math.max(8, Math.min(vw - w - 8, r.left + r.width / 2 - w / 2)) + "px";
     tip.style.top = (r.top - tip.offsetHeight - 8 < 8 ? r.bottom + 8 : r.top - tip.offsetHeight - 8) + "px";
   });
   document.addEventListener("scroll", hide, true);

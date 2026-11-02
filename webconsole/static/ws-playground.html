@@ -19,7 +19,10 @@
   html,body{height:100%;margin:0}
   body{font-family:var(--sans);color:var(--ink);font-size:14px;padding:22px;
     background:radial-gradient(1100px 520px at 18% -10%,#fff 0%,rgba(255,255,255,0) 60%),linear-gradient(160deg,var(--bg1),var(--bg2))}
-  .app{height:calc(100vh - 44px);display:flex;flex-direction:column;border-radius:28px;
+  /* 和控制台一致：桌面宽度按 80% 排版；vh 会被 zoom 缩放，高度要除回去 */
+  :root{--z:1}
+  @media (min-width:801px){ :root{--z:.8} body{zoom:var(--z)} }
+  .app{height:calc(100vh / var(--z) - 44px);display:flex;flex-direction:column;border-radius:28px;
     background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(236,242,249,.55));border:1px solid rgba(255,255,255,.95);
     box-shadow:0 30px 70px rgba(30,50,90,.16),0 0 0 6px rgba(35,35,35,.04);overflow:hidden}
   button,input,select,textarea{font:inherit;color:inherit}
