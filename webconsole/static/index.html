@@ -614,6 +614,14 @@
   .topbar .right{grid-column:3;justify-self:end;margin:0}
   .content{padding-top:4px}
 
+  /* ---- 列表页：表格是固定窗口，页面本身不滚动，只在表格里滚（表头固定）；不显示滚动条 ---- */
+  .content:has(> .page.fill.on){display:flex;flex-direction:column;overflow:hidden}
+  .page.fill.on{display:flex;flex-direction:column;flex:1;min-height:0}
+  .page.fill > *{flex:none}
+  .page.fill > .xt-wrap{flex:0 1 auto;min-height:140px;overflow:auto}
+  .content,.xt-wrap{scrollbar-width:none}
+  .content::-webkit-scrollbar,.xt-wrap::-webkit-scrollbar{display:none}
+
   /* ---- 按钮 / 筛选：胶囊 ---- */
   .btn{border-radius:22px}
   .btn--sm{border-radius:16px}
@@ -742,6 +750,8 @@
     .topbar .sub{align-items:flex-start}
     .topbar .right:empty,.topbar .right:has(#btnNewTask[style*="none"]){display:none}
     .content{padding:0 16px 30px}
+    .content:has(> .page.fill.on){display:block;overflow-y:auto}
+    .page.fill.on{display:block}
   }
 </style>
 </head>
@@ -889,7 +899,7 @@
       </section>
 
       <!-- ============================================================ 账户管理 -->
-      <section class="page" id="page-accounts">
+      <section class="page fill" id="page-accounts">
         <div class="toolbar">
           <span class="lbl">状态</span>
           <div class="pills" id="acctPills"></div>
@@ -908,7 +918,7 @@
       </section>
 
       <!-- ============================================================ 运行记录 -->
-      <section class="page" id="page-runs">
+      <section class="page fill" id="page-runs">
         <div class="toolbar">
           <span class="lbl">状态</span>
           <div class="pills" id="runPills"></div>
@@ -1003,7 +1013,7 @@
       </section>
 
       <!-- ============================================================ 推送表与字段 -->
-      <section class="page" id="page-sync-tables">
+      <section class="page fill" id="page-sync-tables">
         <div class="toolbar">
           <span class="grow"></span>
           <span class="note" id="syncSaveState" style="margin:0"></span>
@@ -1056,7 +1066,7 @@
       </section>
 
       <!-- ============================================================ 推送记录 -->
-      <section class="page" id="page-sync-logs">
+      <section class="page fill" id="page-sync-logs">
         <div class="toolbar">
           <span class="lbl">状态</span>
           <div class="pills" id="syncPills"></div>
