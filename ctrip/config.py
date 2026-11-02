@@ -202,6 +202,13 @@ class CtripConfig:
     account_api_token: str = ""
     account_api_timeout: int = 10
     login_retry: int = 2
+    # 访问携程用的代理（接口请求与浏览器一致）：
+    #   auto（默认）跟随系统/环境变量代理，但代理连不上时自动改直连并告警 ——
+    #        本机代理软件（Clash 等）没开时，系统代理设置还在，会把所有请求打到一个死端口上
+    #   system 严格跟随系统/环境变量代理（连不上就报错）
+    #   none   一律直连，忽略系统代理
+    #   http://host:port 指定代理
+    proxy: str = "auto"
     cookie_ttl_hours: int = 12        # 超过该时长强制复验
     accounts: list[AccountConfig] = field(default_factory=list)
 

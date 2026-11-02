@@ -438,10 +438,10 @@
         <div id="syTables"></div>
         <div class="sticky-acts">
           <button class="btn btn--go" id="btnSyncSave">保存配置</button>
-          <button class="btn" id="btnSyncDry">试运行（预览报文，不推送）</button>
+          <button class="btn" id="btnSyncDry">全部试运行（预览报文，不推送）</button>
           <span style="flex:1"></span>
-          <button class="btn" id="btnSyncDay">立即推送日表</button>
-          <button class="btn" id="btnSyncMonth">立即推送月表</button>
+          <span class="note" style="margin:0;align-self:center">按各表的「回溯」窗口取数</span>
+          <button class="btn btn--go" id="btnSyncAll">立即推送全部</button>
         </div>
       </div>
     </div>
@@ -563,6 +563,25 @@
   </div>
 </div>
 
+<!-- ================================================================ 删除账号 -->
+<div class="modal" id="mDelete">
+  <div class="dlg" style="width:480px">
+    <div class="dlg-hd"><h3>删除账号</h3><button class="x" data-close="mDelete">×</button></div>
+    <div class="dlg-bd">
+      <p style="margin:0 0 10px">确定删除 <b id="dName"></b>？</p>
+      <p class="note" style="margin:0 0 12px">会从 config.yaml 去掉这个账号（自动备份），关闭它的浏览器，之后不再参与定时采集。
+        已入库的业务数据和运行日志不受影响。</p>
+      <label class="check"><input type="checkbox" id="dPurge"> 同时删除登录态和浏览器 profile</label>
+      <p class="note" style="margin:-4px 0 0 22px">删了之后再加回同一个号，携程会当成新设备，需要重新过滑块 / 短信验证。</p>
+      <p class="note" id="dWarn" style="color:var(--stop)"></p>
+    </div>
+    <div class="dlg-ft">
+      <button class="btn" data-close="mDelete">取消</button>
+      <button class="btn btn--stop" id="btnDelOk">删除</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================================================================ 新建任务 -->
 <div class="modal" id="mTask">
   <div class="dlg" style="width:640px">
@@ -649,6 +668,7 @@
     <div class="dlg-ft">
       <label class="check left" style="margin:0"><input type="checkbox" id="lFollow" checked> 自动滚到底</label>
       <button class="btn" id="btnLogCopy">复制日志</button>
+      <button class="btn" id="btnLogRerun">重跑</button>
       <button class="btn btn--stop" id="btnLogStop">停止任务</button>
       <button class="btn" data-close="mLog">关闭</button>
     </div>
@@ -801,6 +821,7 @@ async function loadAccounts(){
         <button class="btn btn--sm ${a.is_fresh ? "" : "btn--go"}" data-act="browser">${a.is_fresh ? "浏览器" : "去登录"}</button>
         <button class="btn btn--sm" data-act="collect">采集</button>
         <button class="btn btn--sm" data-act="edit">编辑</button>
+        <button class="btn btn--sm btn--stop" data-act="del">删除</button>
       </div></td>
     </tr>`).join("");
 
@@ -819,6 +840,7 @@ $("acctRows").addEventListener("click", (e) => {
   ({browser: () => openBrowser(id),
     collect: () => openTaskDialog([id]),
     edit: () => openAccountDialog(id),
+    del: () => openDeleteDialog(id),
     log: () => openRunLog(btn.dataset.run)})[btn.dataset.act]();
 });
 $("btnAcctRefresh").onclick = () => loadAccounts().then(() => toast("已刷新"));
@@ -850,6 +872,30 @@ function openAccountDialog(id){
   setTimeout(() => (id ? $("aName") : $("aName")).focus(), 30);
 }
 $("btnAcctNew").onclick = () => openAccountDialog(null);
+
+/* ---------------------------------------------------------------- 删除账号 */
+let deleting = null;
+function openDeleteDialog(id){
+  const a = accounts.find(x => x.account_id === id) || {};
+  deleting = id;
+  $("dName").textContent = `${a.name || a.account || id}（${id}）`;
+  $("dPurge").checked = false;
+  $("dWarn").textContent = a.task ? `该账号正在采集：${a.task}，需要先在任务管理里停止。` : "";
+  $("btnDelOk").disabled = !!a.task;
+  openModal("mDelete");
+}
+$("btnDelOk").onclick = async () => {
+  if (!deleting) return;
+  $("btnDelOk").disabled = true;
+  try {
+    const r = await api(`/api/accounts/${encodeURIComponent(deleting)}?purge=${$("dPurge").checked}`,
+                        {method:"DELETE"});
+    toast(`${r.message}：${(r.steps || []).join("；")}`);
+    if (current === deleting) current = null;
+    closeModal("mDelete"); loadAccounts();
+  } catch (e){ toast(e.message); }
+  $("btnDelOk").disabled = false;
+};
 $("btnAcctSubmit").onclick = async () => {
   if (editing){
     const a = accounts.find(x => x.account_id === editing) || {};
@@ -1312,6 +1358,7 @@ async function loadRuns(){
         ${r.has_log ? `<button class="btn btn--sm" data-act="log">日志</button>` : ""}
         ${r.status === "running" ? `<button class="btn btn--sm btn--stop" data-act="stop">停止</button>` : ""}
         ${r.status === "queued" ? `<button class="btn btn--sm btn--stop" data-act="stop">取消</button>` : ""}
+        ${canRerun(r) ? `<button class="btn btn--sm" data-act="rerun">重跑</button>` : ""}
       </div></td>
     </tr>`).join("")
     : `<tr><td colspan="7" class="empty-row">没有运行记录。点右上角「新建采集任务」开始。</td></tr>`;
@@ -1325,6 +1372,7 @@ $("runRows").addEventListener("click", async (e) => {
     catch (err){ toast(err.message); }
     return;
   }
+  if (btn && btn.dataset.act === "rerun"){ rerun(id); return; }
   const r = runs.find(x => x.run_id === id);
   if (r && !r.has_log){ toast(r.detail || "这条记录没有运行日志"); return; }
   openRunLog(id);
@@ -1332,6 +1380,15 @@ $("runRows").addEventListener("click", async (e) => {
 $("runFilterAcct").onchange = loadRuns;
 $("runFilterStatus").onchange = loadRuns;
 $("btnRunsRefresh").onclick = loadRuns;
+
+const canRerun = (r) => !["queued","running"].includes(r.status) && (r.mode === "day" || r.mode === "month");
+async function rerun(id, openLog = true){
+  try {
+    const r = await post(`/api/runs/${encodeURIComponent(id)}/rerun`);
+    toast(r.message); await loadRuns();
+    if (openLog) openRunLog(r.run.run_id);
+  } catch (e){ toast(e.message); }
+}
 
 /* ---------------------------------------------------------------- 运行日志弹窗 */
 let logRun = null, logNext = 0, logTimer = null;
@@ -1374,6 +1431,7 @@ async function pollRunLog(){
   const live = r.status === "queued" || r.status === "running";
   $("btnLogStop").style.display = live ? "" : "none";
   $("btnLogStop").textContent = r.status === "queued" ? "取消排队" : "停止任务";
+  $("btnLogRerun").style.display = canRerun(r) ? "" : "none";
   if (live) logTimer = setTimeout(pollRunLog, 1200);
   else loadRuns();
 }
@@ -1383,6 +1441,7 @@ $("btnLogStop").onclick = async () => {
   try { const r = await post(`/api/runs/${encodeURIComponent(logRun)}/stop`); toast(r.message); }
   catch (e){ toast(e.message); }
 };
+$("btnLogRerun").onclick = () => { if (logRun) rerun(logRun); };
 $("btnLogCopy").onclick = async () => {
   const text = [...$("runLog").children].map(d => d.textContent).join("\n");
   try { await navigator.clipboard.writeText(text); toast("已复制"); }
@@ -1615,7 +1674,9 @@ function renderSyncTables(){
         <h2 class="mono">${esc(meta.name)}</h2>
         <span class="tag info">${daily ? "日表" : "月表"}</span>
         <small>${esc(meta.comment)}</small>
-        <div class="acts"><small data-f="count"></small></div>
+        <div class="acts"><small data-f="count"></small>
+          <button class="btn btn--sm" data-f="dry1">试运行</button>
+          <button class="btn btn--sm btn--go" data-f="push1">立即推送</button></div>
       </div>
       <div class="card-bd">
         <div class="field"><label>下游表名</label>
@@ -1669,6 +1730,12 @@ $("syTables").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
   if (chip){ chip.setAttribute("aria-pressed", String(chip.getAttribute("aria-pressed") !== "true")); updateCount(card); return; }
   const f = e.target.dataset && e.target.dataset.f;
+  if (f === "dry1" || f === "push1"){
+    const name = card.querySelector("h2").textContent;
+    if (f === "push1" && !confirm(`立即把 ${name} 按回溯窗口推送到下游？`)) return;
+    runSync("all", f === "dry1", [card.dataset.key], name);
+    return;
+  }
   if (f === "all" || f === "none" || f === "nometa"){
     card.querySelectorAll('[data-f="col"]').forEach(i => {
       const col = i.closest("tr").dataset.col;
@@ -1739,15 +1806,15 @@ async function saveSync(quiet){
 }
 $("btnSyncSave").onclick = () => saveSync(false);
 
-async function runSync(job, dry){
+async function runSync(job, dry, tables, name){
   // 先存再跑：页面上刚改的字段配置要生效
   if (!(await saveSync(true))) return;
-  const label = dry ? "试运行" : (job === "daily" ? "推送日表" : "推送月表");
-  const btns = ["btnSyncDry","btnSyncDay","btnSyncMonth"].map($);
+  const label = (dry ? "试运行" : "推送") + (name ? ` ${name}` : "全部");
+  const btns = [...document.querySelectorAll('#btnSyncDry,#btnSyncAll,[data-f="dry1"],[data-f="push1"]')];
   btns.forEach(b => b.disabled = true);
   toast(`${label} 进行中…`);
   try {
-    const r = await post("/api/sync/run", {job, dry_run: dry});
+    const r = await post("/api/sync/run", {job, dry_run: dry, tables: tables || null});
     showSyncResult(label, r);
     loadSchedStatus();
   } catch (e){ toast(e.message); }
@@ -1770,8 +1837,9 @@ function showSyncResult(label, r){
   openModal("mDry");
 }
 $("btnSyncDry").onclick = () => runSync("all", true);
-$("btnSyncDay").onclick = () => runSync("daily", false);
-$("btnSyncMonth").onclick = () => runSync("monthly", false);
+$("btnSyncAll").onclick = () => {
+  if (confirm("立即把所有参与同步的表按各自回溯窗口推送到下游？")) runSync("all", false);
+};
 
 /* ================================================================ 通知设置 */
 async function loadSettings(){

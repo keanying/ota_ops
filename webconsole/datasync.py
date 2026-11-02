@@ -351,10 +351,12 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
              account_ids: list[str] | None = None,
              dry_run: bool = False, on_log=None,
              window: tuple[str, str] | None = None,
-             reason: str = "manual") -> dict:
+             reason: str = "manual",
+             tables: list[str] | None = None) -> dict:
     """跑一次同步。job = daily | monthly | all。
 
     window 给定时按该区间取数（采集完立刻推用），否则按各表配置的回溯窗口。
+    tables 给定时只推这几张（表 key，如 kylin_daily），页面上「推这一张」用。
     """
     def emit(msg: str, level: str = "info") -> None:
         logger.info(msg) if level == "info" else logger.warning(msg)
@@ -368,9 +370,15 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
             "all": tuple(BUSINESS_TABLES)}.get(job)
     if keys is None:
         raise SyncError(f"未知的同步任务：{job}")
+    if tables:
+        unknown = [t for t in tables if t not in BUSINESS_TABLES]
+        if unknown:
+            raise SyncError(f"未知的表：{', '.join(unknown)}")
+        keys = tuple(k for k in keys if k in tables)
 
     started = time.time()
-    result = {"job": job, "dry_run": dry_run, "tables": {}, "reason": reason,
+    result = {"job": job if not tables else "、".join(TABLES[k].name for k in keys),
+              "dry_run": dry_run, "tables": {}, "reason": reason,
               "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     ok_all = True
 
@@ -381,7 +389,8 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
             ts = sc.tables.get(key)
             if isinstance(ts, dict):
                 ts = TableSync(**ts)
-            if ts is None or not ts.enabled:
+            # 点名推某张表时，哪怕它没勾「参与同步」也推 —— 那是明确的手动操作
+            if ts is None or (not ts.enabled and not tables):
                 continue
             schema = TABLES[key]
             local_pk = ts.pk or DEFAULT_PK.get(key) or schema.unique_key

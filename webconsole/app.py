@@ -130,6 +130,8 @@ def rc_text(rc: int | None) -> str:
 
 
 _EMPTY_JOB_RE = re.compile(r"任务 (\w+) 未采集到数据")
+# 登录失败跳过账号时 CLI 打的那一行，取原因放进运行记录的说明里
+_LOGIN_FAIL_RE = re.compile(r"登录失败，跳过该账号：(.+)$")
 
 # =============================================================================
 # 运行记录：每次采集一条，日志落盘，控制台重启后历史仍在
@@ -227,7 +229,9 @@ class CollectTask:
         self.on_done = on_done
         self.source = source             # manual / schedule / catchup / login
         self.empty_jobs: list[str] = []  # 跑了但上游没数据的任务（如 rating 还没出）
+        self.login_error = ""            # 登录失败跳过时的原因
         self.job = "day"
+        self.params: dict = {}           # 发起参数，「重跑」用
         self.sync_window: tuple[str, str] | None = None
         self.entries: list[dict] = []
         # 浏览器画面通道会顺带转发采集日志；没人连时丢弃，不无限堆积
@@ -271,8 +275,9 @@ class CollectTask:
             "run_id": self.run_id, "account_id": self.account_id,
             "label": self.label, "source": self.source,
             "status": self.status, "status_text": STATUS_TEXT[self.status],
-            "detail": self.skip_reason or self.empty_detail().strip("（）"),
-            "rc": self.rc,
+            "detail": (self.skip_reason or self.login_error
+                       or self.empty_detail().strip("（）")),
+            "rc": self.rc, "mode": self.job, "params": self.params,
             "created_at": self.created_at.strftime(fmt),
             "started_at": self.started_at.strftime(fmt) if self.started_at else "",
             "finished_at": self.finished_at.strftime(fmt) if self.finished_at else "",
@@ -318,6 +323,8 @@ class CollectTask:
         env = dict(os.environ)
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
+        # 让 CLI 认得出「占用 profile 的就是控制台自己」，给出该去弹窗里登录的提示
+        env["CTRIP_CONSOLE_PID"] = str(os.getpid())
         self._push("info", f"$ {' '.join(self.argv)}")
         try:
             self.proc = subprocess.Popen(
@@ -338,6 +345,9 @@ class CollectTask:
                 hit = _EMPTY_JOB_RE.search(line)
                 if hit and hit.group(1) not in self.empty_jobs:
                     self.empty_jobs.append(hit.group(1))
+                fail = _LOGIN_FAIL_RE.search(line)
+                if fail and not self.login_error:
+                    self.login_error = "登录失败：" + fail.group(1)[:300]
                 level = "error" if (" ERROR " in line or "❌" in line) else (
                     "warn" if (" WARNING " in line or "⚠" in line) else "info")
                 self._push(level, line)
@@ -411,6 +421,7 @@ def launch_collect(account_id: str, mode: str, params: dict, source: str = "manu
     label, argv = build_collect_argv(account_id, mode, params)
     task = CollectTask(account_id, label, argv, on_done=_after_collect_push, source=source)
     task.job = mode
+    task.params = dict(params)
     task.sync_window = _sync_window_of(mode, params)
     _register(task)
     if start:
@@ -667,6 +678,56 @@ async def api_account_update(account_id: str, payload: dict) -> JSONResponse:
     return JSONResponse({"ok": True, "account_id": account_id,
                          "fields": list(fields),
                          "message": f"已更新：{'、'.join(fields)}"})
+
+
+@app.delete("/api/accounts/{account_id}")
+def api_account_delete(account_id: str, purge: bool = False) -> JSONResponse:
+    """删除账号：从 config.yaml 去掉条目，关掉它的浏览器。
+
+    purge=true 时连登录态（auth/{id}）和浏览器 profile（browser/{id}）一起删 ——
+    删了之后再加回同一个号会被携程当成新设备，要重新过验证。
+    已入库的业务数据和运行日志都不动。
+    """
+    global _cfg
+    import shutil
+
+    from .accounts_admin import AccountAdminError, delete_account
+
+    if account_id not in {a.account_id for a in _cfg.ctrip.accounts}:
+        raise HTTPException(404, f"账号不存在：{account_id}")
+    busy = _tasks.get(account_id)
+    if busy and busy.running:
+        raise HTTPException(409, f"该账号有采集任务在跑（{busy.label}），先停止再删除")
+
+    steps = []
+    worker = _workers.pop(account_id, None)
+    if worker:
+        worker.shutdown()
+        worker.join(timeout=20)
+        steps.append("已关闭浏览器")
+    display = _displays.pop(account_id, None)
+    if display:
+        display.stop()
+
+    with _lock:
+        try:
+            fresh, backup = delete_account(_cfg, account_id)
+        except AccountAdminError as exc:
+            raise HTTPException(400, str(exc))
+        old_cfg, _cfg = _cfg, fresh
+    steps.append(f"已从 config.yaml 删除（备份 {Path(backup).name}）")
+
+    if purge:
+        for d in (old_cfg.path(old_cfg.ctrip.cookie_dir) / account_id,
+                  old_cfg.path(old_cfg.ctrip.browser_dir) / account_id):
+            try:
+                if d.exists() and d.resolve().parent == d.parent.resolve():
+                    shutil.rmtree(d)
+                    steps.append(f"已删除 {d.parent.name}/{d.name}")
+            except OSError as exc:
+                steps.append(f"删除 {d} 失败：{exc}")
+    return JSONResponse({"ok": True, "steps": steps,
+                         "message": f"账号 {account_id} 已删除"})
 
 
 @app.post("/api/accounts/{account_id}/verify")
@@ -951,6 +1012,28 @@ def api_run_log(run_id: str, after: int = 0) -> JSONResponse:
                          "next": max(0, after) + len(lines)})
 
 
+@app.post("/api/runs/{run_id}/rerun")
+async def api_run_rerun(run_id: str) -> JSONResponse:
+    """按原参数再跑一次（同一个账号、同样的日 / 月和区间）。生成一条新的运行记录。"""
+    summary, _ = read_run_log(run_id, 0)
+    if summary is None:
+        raise HTTPException(404, "运行记录不存在")
+    mode = summary.get("mode")
+    if mode not in ("day", "month"):
+        raise HTTPException(400, "这条记录没有保存采集参数（跳过记录或旧版本记录），请新建任务")
+    aid = summary["account_id"]
+    if aid not in {a.account_id for a in _cfg.ctrip.accounts}:
+        raise HTTPException(400, f"账号 {aid} 已不存在")
+    busy = _tasks.get(aid)
+    if busy and busy.running:
+        raise HTTPException(409, f"该账号已有任务在跑：{busy.label}")
+    task = launch_collect(aid, mode, dict(summary.get("params") or {}),
+                          source="manual", start=False)
+    threading.Thread(target=run_batch, args=([task],), name="collect-rerun",
+                     daemon=True).start()
+    return JSONResponse({"ok": True, "message": f"已重跑：{task.label}", "run": task.summary()})
+
+
 @app.post("/api/runs/{run_id}/stop")
 def api_run_stop(run_id: str) -> JSONResponse:
     task = _runs.get(run_id)
@@ -1173,8 +1256,9 @@ async def api_sync_run(payload: dict | None = None) -> JSONResponse:
     dry = bool(payload.get("dry_run"))
     try:
         result = await asyncio.to_thread(
-            datasync.run_sync, _cfg, _sync_cfg(), job,
-            payload.get("account_ids") or None, dry, _sync_log)
+            lambda: datasync.run_sync(_cfg, _sync_cfg(), job,
+                                      payload.get("account_ids") or None, dry, _sync_log,
+                                      tables=payload.get("tables") or None))
     except datasync.SyncError as exc:
         raise HTTPException(400, str(exc))
     except Exception as exc:  # noqa: BLE001

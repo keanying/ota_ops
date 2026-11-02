@@ -74,6 +74,38 @@ class BrowserBusyError(RuntimeError):
     """同一 profile 已被另一个进程占用。"""
 
 
+def _proxy_args(cfg: AppConfig) -> list[str]:
+    """浏览器的代理参数，与接口请求用同一个决定（见 session.resolve_proxy）。
+
+    Chromium 默认也读系统代理：系统代理指向一个没开的端口时，
+    接口改直连了而浏览器还在撞死端口，登录页根本打不开。
+    """
+    from .session import resolve_proxy
+
+    plan = resolve_proxy(getattr(cfg.ctrip, "proxy", "auto"))
+    if plan.kind == "direct":
+        return ["--no-proxy-server"]
+    if plan.kind == "explicit":
+        return [f"--proxy-server={plan.url}"]
+    return []
+
+
+def _busy_message(cfg: AppConfig, account_id: str, detail: str) -> str:
+    """profile 被占用时的提示。占用者是控制台本身时说清楚该去哪儿处理。"""
+    meta = read_session_meta(cfg, account_id)
+    holder = int(meta.get("holder_pid") or 0)
+    console = int(os.environ.get("CTRIP_CONSOLE_PID") or 0)
+    if holder and console and holder == console:
+        return (f"账号 {account_id} 的浏览器正在控制台里开着（{detail}），本次采集无法再打开它来重新登录。"
+                f"请在控制台「账户管理 → 浏览器」弹窗里完成登录（登录成功会自动保存登录态），"
+                f"或先关闭该浏览器，再重跑这次任务")
+    return (f"账号 {account_id} 的浏览器 profile 正被占用（{detail}）。"
+            f"同一 profile 不能被两个进程同时打开。"
+            f"如果是控制台里这个账号的浏览器还开着，在控制台弹窗里登录或关闭浏览器；"
+            f"否则等待上一次运行结束，或执行 "
+            f"python -m ctrip.cli browser --stop --account-id {account_id}")
+
+
 @dataclass
 class BrowserSession:
     """一次浏览器会话。
@@ -534,19 +566,14 @@ def open_session(cfg: AppConfig, account_id: str, *,
     if cfg.ctrip.persistent_browser:
         in_use, detail = profile_in_use(cfg, account_id)
         if in_use:
-            raise BrowserBusyError(
-                f"账号 {account_id} 的浏览器 profile 正被占用（{detail}）。"
-                f"同一 profile 不能被两个进程同时打开。"
-                f"请等待上一次运行结束，或执行 "
-                f"python -m ctrip.cli browser --stop --account-id {account_id}"
-            )
+            raise BrowserBusyError(_busy_message(cfg, account_id, detail))
         profile_dir = cfg.browser_profile_dir(account_id)
         p = sync_playwright().start()
         launch_kwargs: dict[str, Any] = {
             "user_data_dir": str(profile_dir),
             "headless": headless,
             "slow_mo": cfg.ctrip.slow_mo,
-            "args": list(_LAUNCH_ARGS),
+            "args": list(_LAUNCH_ARGS) + _proxy_args(cfg),
             # 强制用完整 Chromium（--headless=new）而非精简的 chrome-headless-shell。
             # 实测：headless-shell 不写 Preferences / Login Data / History /
             # Service Worker，也不写 SingletonLock，持久化不完整；
@@ -590,7 +617,7 @@ def open_session(cfg: AppConfig, account_id: str, *,
     log.warning("[%s] 持久化浏览器已关闭，使用临时 profile（每次登录都可能触发验证）", account_id)
     p = sync_playwright().start()
     browser = p.chromium.launch(headless=headless, slow_mo=cfg.ctrip.slow_mo,
-                                args=list(_LAUNCH_ARGS))
+                                args=list(_LAUNCH_ARGS) + _proxy_args(cfg))
     context = browser.new_context(**_context_kwargs(cfg))
     context.add_init_script(STEALTH_JS)
     context.set_default_timeout(cfg.ctrip.nav_timeout * 1000)
@@ -644,6 +671,7 @@ def _spawn_keep_alive(cfg: AppConfig, account_id: str, port: int, *,
         "--lang=zh-CN",
         "--accept-lang=zh-CN,zh",
         *_LAUNCH_ARGS,
+        *_proxy_args(cfg),
     ]
     if headless:
         cmd.append("--headless=new")

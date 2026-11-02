@@ -337,3 +337,46 @@ def create_account(cfg, new: NewAccount):
     except OSError:
         pass
     return fresh, got, backup
+
+
+# ---------------------------------------------------------------- 删除
+def delete_account(cfg, account_id: str):
+    """从 config.yaml 删掉一个账号条目，返回 (新的 cfg, 备份路径)。
+
+    只删这一段：条目尾部紧跟的注释和空行（比如被注释掉的示例账号）保留。
+    写入后复核读不到该账号、且其余账号一个不少，否则回滚。
+    """
+    config_path = Path(cfg.config_path or "")
+    if not cfg.config_path or not config_path.exists():
+        raise AccountAdminError("找不到 config.yaml，无法删除账号")
+    before = [x.account_id for x in cfg.ctrip.accounts]
+
+    text = config_path.read_text(encoding="utf-8")
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    try:
+        start, end, _ = _entry_span(lines, account_id)
+    except AccountAdminError:
+        raise AccountAdminError(
+            f"config.yaml 里没有账号 {account_id} 的条目（可能来自环境变量 CTRIP_ACCOUNTS、"
+            "账号表或账号服务），需要到来源处删除")
+    while end > start + 1 and (not lines[end - 1].strip()
+                               or lines[end - 1].lstrip().startswith("#")):
+        end -= 1
+    merged = lines[:start] + lines[end:]
+
+    backup = config_path.with_suffix(
+        config_path.suffix + f".bak-{datetime.now():%Y%m%d%H%M%S}")
+    shutil.copy2(config_path, backup)
+    config_path.write_text(newline.join(merged) + newline, encoding="utf-8")
+    try:
+        fresh = load_config(str(config_path), validate=False)
+        after = [x.account_id for x in fresh.ctrip.accounts]
+        if account_id in after:
+            raise AccountAdminError("删除后仍能读到该账号")
+        if sorted(after) != sorted(a for a in before if a != account_id):
+            raise AccountAdminError("删除后其他账号有变化，已放弃")
+    except Exception as exc:  # noqa: BLE001
+        shutil.copy2(backup, config_path)
+        raise AccountAdminError(f"删除失败已回滚：{exc}") from exc
+    return fresh, backup

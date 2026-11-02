@@ -66,6 +66,8 @@ class LoginResult:
     message: str
     cookie_file: Path | None = None
     evidence: list[Path] | None = None
+    # False 表示重试也没用（profile 被占用、网络不通），调用方不该再试
+    retryable: bool = True
 
 
 # =============================================================================
@@ -286,7 +288,7 @@ def login(cfg: AppConfig, account: AccountConfig, log: logging.Logger | None = N
         session = open_session(cfg, account.account_id, headless=headless,
                                keep_alive=keep_alive, log=log)
     except BrowserBusyError as exc:
-        return LoginResult(account.account_id, False, str(exc))
+        return LoginResult(account.account_id, False, str(exc), retryable=False)
     except Exception as exc:  # noqa: BLE001
         return LoginResult(account.account_id, False, f"浏览器启动失败：{exc}")
 
@@ -390,6 +392,7 @@ def build_api(cfg: AppConfig, account_id: str, log: logging.Logger):
         origin="https://vbooking.ctrip.com",
         referer="https://vbooking.ctrip.com/",
         account_id=account_id,
+        proxy=getattr(cfg.ctrip, "proxy", "auto"),
     )
     return CtripApi(
         session,
@@ -405,8 +408,15 @@ def build_api(cfg: AppConfig, account_id: str, log: logging.Logger):
 
 
 def verify_cookie(cfg: AppConfig, account_id: str,
-                  log: logging.Logger | None = None) -> tuple[bool, str]:
-    """校验某账号登录态是否可用，并顺手更新账号指纹。"""
+                  log: logging.Logger | None = None, *,
+                  raise_network: bool = False) -> tuple[bool, str]:
+    """校验某账号登录态是否可用。
+
+    网络 / 代理不通时：``raise_network=True`` 抛 ``NetworkError`` 让调用方区分处理，
+    否则返回 ``(False, 说明)``（页面上「校验登录态」按钮用这种）。
+    """
+    from .api import NetworkError
+
     log = log or logger
     store = CookieStore(cfg)
     if not store.exists(account_id):
@@ -416,7 +426,12 @@ def verify_cookie(cfg: AppConfig, account_id: str,
     except Exception as exc:  # noqa: BLE001
         return False, f"登录态不可用：{exc}"
 
-    ok, detail = api.verify_session()
+    try:
+        ok, detail = api.verify_session()
+    except NetworkError as exc:
+        if raise_network:
+            raise
+        return False, f"网络不通，无法判断登录态：{exc}"
     if ok:
         # 只更新校验时间；**不在此处写指纹**。
         # 指纹是防“Cookie 串号”的基准，一旦在每次校验时无条件覆写，
@@ -479,9 +494,18 @@ def ensure_logged_in(cfg: AppConfig, account: AccountConfig,
     account_id = account.account_id
     store = CookieStore(cfg)
 
+    from .api import NetworkError
+
     if not force_relogin and store.exists(account_id):
         if store.is_fresh(account_id):
-            ok, detail = verify_cookie(cfg, account_id, log)
+            try:
+                ok, detail = verify_cookie(cfg, account_id, log, raise_network=True)
+            except NetworkError as exc:
+                # 网络不通不是登录态问题：重登既解决不了，还会去抢浏览器 profile
+                log.error("[%s] %s", account_id, exc)
+                return LoginResult(account_id, False,
+                                   f"网络不通，未尝试重新登录（不是登录态问题）：{exc}",
+                                   retryable=False)
             if ok:
                 log.info("[%s] 复用已有登录态：%s", account_id, detail)
                 return LoginResult(account_id, True, detail, cookie_file=store.path(account_id))
@@ -498,6 +522,8 @@ def ensure_logged_in(cfg: AppConfig, account: AccountConfig,
         if last.success:
             return last
         log.warning("[%s] 登录失败：%s", account_id, last.message)
+        if not last.retryable:
+            break  # profile 被占用 / 网络不通，5 秒后再试结果一样
         if isinstance(last.message, str) and "人工完成" in last.message:
             break  # 需要人工验证码，重试无意义
         if attempt < attempts:
