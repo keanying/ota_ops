@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WebSocket 调试台 · OTAOPS</title>
+<link rel="icon" href="/static/logo.png">
+<style>
+  :root{
+    --bg1:#F3F6FA; --bg2:#D8E2EE; --lime:#D9F24A; --lime-d:#C3DC33; --dark:#232323;
+    --ink:#1C1F23; --ink-2:rgba(28,31,35,.8); --muted:rgba(28,31,35,.55); --line:rgba(28,31,35,.08);
+    --ok:#3BB346; --ok-50:#ECF7EC; --warn:#E58A00; --warn-50:#FFF8EA; --bad:#E91E63; --bad-50:#FDECEF;
+    --info:#0B9FB5; --info-50:#E5F7F8; --violet:#8E55D9; --violet-50:#F3EDFB;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+    --shadow:0 10px 30px rgba(40,60,100,.07);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:var(--sans);color:var(--ink);font-size:14px;padding:22px;
+    background:radial-gradient(1100px 520px at 18% -10%,#fff 0%,rgba(255,255,255,0) 60%),linear-gradient(160deg,var(--bg1),var(--bg2))}
+  .app{height:calc(100vh - 44px);display:flex;flex-direction:column;border-radius:28px;
+    background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(236,242,249,.55));border:1px solid rgba(255,255,255,.95);
+    box-shadow:0 30px 70px rgba(30,50,90,.16),0 0 0 6px rgba(35,35,35,.04);overflow:hidden}
+  button,input,select,textarea{font:inherit;color:inherit}
+  .i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* 顶部 */
+  .top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;padding:16px 28px 10px;flex:none}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
+  .brand img{height:34px}
+  .brand b{font-size:17px;font-weight:800}
+  .ttl{background:var(--dark);color:#fff;border-radius:28px;padding:6px 6px 6px 18px;display:flex;align-items:center;gap:12px;
+    box-shadow:0 10px 24px rgba(20,20,20,.18);font-weight:700}
+  .ttl .st{display:flex;align-items:center;gap:7px;background:#353535;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:600}
+  .ttl .st.on{background:var(--lime);color:#161616}
+  .dot{width:8px;height:8px;border-radius:50%;background:#8A8F99;flex:none}
+  .st.on .dot{background:#161616;animation:beat 1.4s infinite}
+  @keyframes beat{50%{opacity:.35}}
+  .top .right{justify-self:end;display:flex;gap:10px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #E1E4EA;background:#fff;
+    border-radius:22px;padding:8px 16px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--ink);font-size:13.5px}
+  .btn:hover:not(:disabled){border-color:#C9CED7}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn--dark{background:var(--dark);border-color:var(--dark);color:#fff}
+  .btn--dark:hover:not(:disabled){background:#000;border-color:#000}
+  .btn--lime{background:var(--lime);border-color:var(--lime);color:#161616}
+  .btn--lime:hover:not(:disabled){background:var(--lime-d);border-color:var(--lime-d)}
+  .btn--red{color:var(--bad);border-color:#F6C9D6}
+  .btn--sm{padding:5px 12px;font-size:12.5px;border-radius:16px}
+  .btn--block{width:100%}
+
+  /* 三栏 */
+  .grid{flex:1;min-height:0;display:grid;grid-template-columns:330px minmax(0,1fr) 420px;gap:18px;padding:8px 28px 26px}
+  .col{min-height:0;display:flex;flex-direction:column;gap:16px;overflow:auto;scrollbar-width:none}
+  .col::-webkit-scrollbar{display:none}
+  .card{background:rgba(255,255,255,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.9);
+    border-radius:20px;box-shadow:var(--shadow);flex:none}
+  .card.grow{flex:1;min-height:0;display:flex;flex-direction:column}
+  .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .hd h2{margin:0;font-size:15px;font-weight:700}
+  .hd .sp{flex:1}
+  .bd{padding:16px 18px}
+  .note{color:var(--muted);font-size:12.5px;line-height:1.6;margin:8px 0 0}
+  .lbl{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin:0 0 6px}
+  .fld{margin-bottom:12px}
+  .fld:last-child{margin-bottom:0}
+  input[type=text],input[type=password],input[type=number],select,textarea{width:100%;border:1px solid #E1E4EA;background:#fff;border-radius:12px;
+    padding:9px 12px;outline:none;transition:border-color .15s,box-shadow .15s}
+  input:focus,select:focus,textarea:focus{border-color:#B9C94A;box-shadow:0 0 0 3px rgba(217,242,74,.35)}
+  textarea{font-family:var(--mono);font-size:12.5px;line-height:1.55;resize:vertical;min-height:120px}
+  .url{font-family:var(--mono);font-size:12px;background:#F4F6F9;border-radius:10px;padding:8px 10px;word-break:break-all;color:var(--ink-2)}
+  .row{display:flex;gap:8px;align-items:center}
+  .row > *{min-width:0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+  .chk input{width:16px;height:16px;accent-color:#1C1F23}
+
+  .tag{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:600;
+    background:rgba(46,50,56,.06);color:var(--ink-2);white-space:nowrap}
+  .tag.ok{background:var(--ok-50);color:var(--ok)} .tag.warn{background:var(--warn-50);color:var(--warn)}
+  .tag.bad{background:var(--bad-50);color:var(--bad)} .tag.info{background:var(--info-50);color:var(--info)}
+  .tag.vio{background:var(--violet-50);color:var(--violet)}
+
+  /* 模板列表 */
+  .tpls{display:flex;flex-direction:column;gap:8px}
+  .tpl{text-align:left;border:1px solid #E6E9EE;background:#fff;border-radius:14px;padding:10px 12px;cursor:pointer;transition:border-color .15s}
+  .tpl:hover{border-color:#C9CED7}
+  .tpl.on{border-color:var(--lime-d);background:#F7FBDF}
+  .tpl b{font-family:var(--mono);font-size:12.5px}
+  .tpl small{display:block;color:var(--muted);font-size:12px;margin-top:3px;line-height:1.5}
+  .evs{display:flex;flex-wrap:wrap;gap:6px}
+
+  /* 模拟前台 */
+  .phone{max-width:560px;margin:0 auto;width:100%}
+  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+  .steps li{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:start;padding:8px 0;position:relative}
+  .steps li::before{content:"";position:absolute;left:12px;top:30px;bottom:-6px;width:2px;background:#E6E9EE}
+  .steps li:last-child::before{display:none}
+  .steps .ic{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#EEF0F3;color:var(--muted);font-size:12px;font-weight:700}
+  .steps li.done .ic{background:var(--ok-50);color:var(--ok)}
+  .steps li.cur .ic{background:var(--lime);color:#161616}
+  .steps li.err .ic{background:var(--bad-50);color:var(--bad)}
+  .steps li.wait .ic{background:var(--warn-50);color:var(--warn)}
+  .steps b{display:block;font-size:13.5px}
+  .steps small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;line-height:1.5}
+  .steps time{color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .ask{border:1.5px dashed var(--lime-d);background:#FBFDEB;border-radius:16px;padding:14px 16px;margin-top:14px}
+  .ask h3{margin:0 0 4px;font-size:14.5px}
+  .result{border-radius:16px;padding:16px 18px;margin-top:14px}
+  .result.ok{background:var(--ok-50)} .result.bad{background:var(--bad-50)}
+  .result h3{margin:0 0 6px;font-size:15px}
+  .result.ok h3{color:#2E9C3A} .result.bad h3{color:#D3175A}
+  .result p{margin:0;font-size:13px;line-height:1.6;color:var(--ink-2)}
+  .codebox{display:flex;gap:8px;margin-top:10px}
+  .codebox input{font-family:var(--mono);letter-spacing:.3em;font-size:16px;text-align:center}
+  .screen{background:#151A2B;border-radius:14px;overflow:hidden;aspect-ratio:16/10;display:grid;place-items:center;position:relative}
+  .screen img{width:100%;height:100%;object-fit:contain;cursor:crosshair;display:block}
+  .screen .empty{color:#AEB6CC;font-size:13px;text-align:center;padding:20px}
+  .urlbar{display:flex;gap:8px;margin-bottom:10px}
+  .tabs{display:inline-flex;background:#fff;border-radius:22px;padding:4px;box-shadow:var(--shadow)}
+  .tabs button{border:0;background:none;border-radius:18px;padding:6px 14px;font-weight:600;cursor:pointer;color:var(--ink-2);font-size:13px}
+  .tabs button.on{background:var(--lime);color:#161616}
+
+  /* 参数填报 */
+  .pform .fld{display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;margin-bottom:10px}
+  .pform .fld .lbl{margin:0;font-family:var(--mono);font-size:12.5px;word-break:break-all}
+  .pform .fld small{grid-column:2;color:var(--muted);font-size:12px;margin-top:-6px}
+  .err{color:var(--bad);font-size:12.5px;margin-top:6px}
+
+  /* 消息记录 */
+  .log{flex:1;min-height:0;overflow:auto;padding:8px 10px 12px;scrollbar-width:thin}
+  .msg{border-radius:12px;padding:8px 10px;margin:4px 0;border:1px solid transparent;cursor:pointer}
+  .msg:hover{background:#F6F7F8}
+  .msg .mh{display:flex;align-items:center;gap:8px;font-size:12.5px}
+  .msg .dir{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-weight:800;font-size:12px;flex:none}
+  .msg.out .dir{background:var(--dark);color:var(--lime)}
+  .msg.in .dir{background:var(--info-50);color:var(--info)}
+  .msg.sys .dir{background:#EEF0F3;color:var(--muted)}
+  .msg .nm{font-weight:700;font-family:var(--mono)}
+  .msg .sm{color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .msg time{color:var(--muted);font-family:var(--mono);font-size:11.5px;flex:none}
+  .msg pre{display:none;margin:8px 0 0 28px;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;
+    background:#F4F6F9;border-radius:10px;padding:8px 10px;max-height:260px;overflow:auto}
+  .msg.open pre{display:block}
+  .msg.open{border-color:#E6E9EE;background:#fff}
+  .logbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  .logbar .sp{flex:1}
+  .empty-log{text-align:center;color:var(--muted);padding:40px 10px;font-size:13px}
+
+  @media (max-width:1250px){ .grid{grid-template-columns:300px minmax(0,1fr)} .grid > .col:last-child{grid-column:1 / -1} .app{height:auto} .col{overflow:visible} }
+  @media (max-width:800px){ body{padding:0} .app{border-radius:0} .top{grid-template-columns:1fr;padding:12px 16px} .top .right{justify-self:start}
+    .grid{grid-template-columns:1fr;padding:8px 16px 20px} .pform .fld{grid-template-columns:1fr} .pform .fld small{grid-column:1} }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 01-12 0V8zM12 18v4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6v18h12V7l-4-4zM14 3v4h4"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <a class="brand" href="/" title="返回控制台"><img src="/static/logo.png" alt=""><b>OTAOPS</b></a>
+    <div class="ttl">WebSocket 调试台<span class="st" id="st"><span class="dot"></span><span id="stText">未连接</span></span></div>
+    <div class="right">
+      <a class="btn" href="/api/ws-spec" target="_blank" rel="noopener"><svg class="i"><use href="#i-doc"/></svg>协议 JSON</a>
+      <a class="btn" href="/#/system"><svg class="i"><use href="#i-back"/></svg>返回控制台</a>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- ================================================ 左：连接 + 消息模板 -->
+    <div class="col">
+      <section class="card">
+        <div class="hd"><h2>连接</h2><span class="sp"></span><span class="tag" id="epTag">—</span></div>
+        <div class="bd">
+          <div class="fld"><label class="lbl" for="ep">接口</label><select id="ep"></select></div>
+          <div class="fld" id="paramBox"></div>
+          <div class="fld"><label class="lbl">连接地址</label><div class="url" id="url">—</div></div>
+          <div class="row">
+            <button class="btn btn--dark btn--block" id="btnConn"><svg class="i"><use href="#i-plug"/></svg>连接</button>
+            <button class="btn btn--red" id="btnClose" disabled><svg class="i"><use href="#i-x"/></svg>断开</button>
+          </div>
+          <p class="note" id="epDesc"></p>
+        </div>
+      </section>
+      <section class="card">
+        <div class="hd"><h2>客户端可发送</h2><span class="sp"></span><span class="note" style="margin:0">点一条填进「参数填报」</span></div>
+        <div class="bd"><div class="tpls" id="tpls"></div></div>
+      </section>
+      <section class="card">
+        <div class="hd"><h2>服务端会推送</h2></div>
+        <div class="bd"><div class="evs" id="evs"></div><p class="note" id="evNote"></p></div>
+      </section>
+    </div>
+
+    <!-- ================================================ 中：模拟前台 + 参数填报 -->
+    <div class="col">
+      <section class="card">
+        <div class="hd"><h2>模拟前台接入</h2><span class="sp"></span>
+          <div class="tabs" id="modeTabs"><button class="on" data-m="front">前台页面</button><button data-m="raw">参数填报</button></div></div>
+        <div class="bd">
+          <div id="front"></div>
+          <div id="raw" hidden>
+            <div class="row" style="margin-bottom:12px"><span class="tag vio" id="rawName">自定义消息</span><span class="note" style="margin:0" id="rawDesc"></span></div>
+            <div class="pform" id="pform"></div>
+            <div class="fld"><label class="lbl" for="rawJson">消息 JSON（可直接改，和上面的表单同步）</label><textarea id="rawJson" spellcheck="false">{}</textarea>
+              <div class="err" id="rawErr"></div></div>
+            <div class="row"><span class="sp" style="flex:1"></span>
+              <button class="btn" id="btnFmt">格式化</button>
+              <button class="btn btn--lime" id="btnSend"><svg class="i"><use href="#i-send"/></svg>发送</button></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ================================================ 右：消息记录 -->
+    <div class="col">
+      <section class="card grow">
+        <div class="hd"><h2>收发记录</h2><span class="sp"></span><span class="tag" id="cntOut">↑ 0</span><span class="tag info" id="cntIn">↓ 0</span></div>
+        <div class="log" id="log"><div class="empty-log">连接后，发出和收到的每条消息都会显示在这里，点开看完整 JSON</div></div>
+        <div class="logbar">
+          <label class="chk"><input type="checkbox" id="hideFrames" checked>不记录画面帧</label>
+          <label class="chk"><input type="checkbox" id="autoScroll" checked>自动滚到底</label>
+          <span class="sp"></span>
+          <button class="btn btn--sm" id="btnExport">导出</button>
+          <button class="btn btn--sm" id="btnClear">清空</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const now = () => new Date().toTimeString().slice(0, 8);
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const SECRET = ["password"];
+const mask = (o) => { if (!o || typeof o !== "object") return o;
+  const c = Array.isArray(o) ? [...o] : {...o}; for (const k of Object.keys(c)) c[k] = SECRET.includes(k) && c[k] ? "***" : mask(c[k]); return c; };
+
+let SPEC = [], ep = null, ws = null, cur = null, logs = [], nOut = 0, nIn = 0;
+
+/* ================================================================ 接口 */
+async function loadSpec(){
+  try { SPEC = ((await (await fetch("/api/ws-spec")).json()).endpoints || []).filter(e => e["客户端发送"]); }
+  catch (e) { SPEC = []; }
+  $("ep").innerHTML = SPEC.map((e, i) => `<option value="${i}">${esc(e.path)}</option>`).join("");
+  const want = new URLSearchParams(location.search).get("path");
+  const idx = Math.max(0, SPEC.findIndex(e => e.path === want));
+  $("ep").value = String(idx); pickEndpoint();
+}
+const paramsOf = (path) => [...path.matchAll(/\{(\w+)\}/g)].map(m => m[1]);
+function pickEndpoint(){
+  ep = SPEC[+$("ep").value]; if (!ep) return;
+  const ps = paramsOf(ep.path);
+  $("paramBox").innerHTML = ps.map(p => `<label class="lbl" for="p_${p}">${p}</label>
+    <input type="text" id="p_${p}" data-p="${p}" placeholder="${p === "account_id" ? "账号 ID，如 vbk_569202；建新号用 new" : p}">`).join("");
+  $("paramBox").hidden = !ps.length;
+  const q = new URLSearchParams(location.search).get("account_id");
+  if (q && $("p_account_id")) $("p_account_id").value = q;
+  $("epTag").textContent = ep.path === "/api/onboard" ? "推荐" : ep.path.startsWith("/ws/") ? "主通道" : "完整登录";
+  $("epTag").className = "tag " + (ep.path === "/api/onboard" ? "ok" : "info");
+  $("epDesc").textContent = ep["用途"] || "";
+  $("tpls").innerHTML = (ep["客户端发送"] || []).map((m, i) => {
+    const name = m.action || m.type || "消息";
+    return `<button class="tpl" data-i="${i}"><b>${esc(name)}</b><small>${esc(m["说明"] || summary(m))}</small></button>`;
+  }).join("");
+  $("evs").innerHTML = (ep["服务端推送"] || []).map(m => {
+    const name = m.event || (m.type === "login" ? "login:" + (m.stage || "").split("|")[0] : m.type);
+    return `<span class="tag ${evCls(m)}" title="${esc(m["说明"] || "")}">${esc(name)}</span>`;
+  }).join("");
+  $("evNote").textContent = "鼠标停在标签上看说明。收到的消息会在右侧记录里按同样的颜色标出。";
+  updateUrl(); renderFront(); loadTemplate(0);
+}
+const summary = (m) => Object.keys(m).filter(k => !["说明","action","type"].includes(k)).join("、") || "无参数";
+function evCls(m){
+  const k = m.event || m.stage || m.type || "";
+  if (/success|done|accepted/.test(k)) return "ok";
+  if (/fail|error|abort/.test(k)) return "bad";
+  if (/need|captcha|code/.test(k)) return "warn";
+  return "info";
+}
+function wsUrl(){
+  let path = ep.path;
+  for (const p of paramsOf(path)) path = path.replace(`{${p}}`, encodeURIComponent(($(`p_${p}`)?.value || "").trim() || `{${p}}`));
+  return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`;
+}
+function updateUrl(){ $("url").textContent = wsUrl(); }
+
+/* ================================================================ 连接 */
+function setState(on, text){
+  $("st").classList.toggle("on", on); $("stText").textContent = text;
+  $("btnConn").disabled = on; $("btnClose").disabled = !on; $("ep").disabled = on;
+  document.querySelectorAll("#paramBox input").forEach(i => i.disabled = on);
+}
+function connect(){
+  const url = wsUrl();
+  if (/\{\w+\}/.test(url)){ toast("先填路径参数"); return Promise.resolve(false); }
+  if (ws && ws.readyState <= 1) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    setState(true, "连接中…"); addLog("sys", "connect", {url});
+    ws = new WebSocket(url);
+    ws.onopen = () => { setState(true, "已连接"); addLog("sys", "open", {url}); front("open"); resolve(true); };
+    ws.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { m = {raw: String(e.data).slice(0, 2000)}; }
+      if (m.type === "frame"){ front("frame", m); if ($("hideFrames").checked) return; m = {...m, data: `<${Math.round((m.data || "").length / 1024)} KB base64>`}; }
+      nIn++; addLog("in", m.event || (m.type === "login" ? "login:" + m.stage : m.type) || "message", m); front("msg", m);
+    };
+    ws.onclose = (e) => { addLog("sys", "close", {code: e.code, reason: e.reason || ""}); setState(false, `已断开（${e.code}）`); front("close", e); ws = null; resolve(false); };
+    ws.onerror = () => addLog("sys", "error", {message: "连接出错（地址不对、服务没起或被拒绝）"});
+  });
+}
+function disconnect(){ if (ws) ws.close(1000, "client close"); }
+async function send(obj){
+  if (!ws || ws.readyState !== 1){ const ok = await connect(); if (!ok) return false; }
+  ws.send(JSON.stringify(obj)); nOut++;
+  addLog("out", obj.action || obj.type || "message", obj); return true;
+}
+
+/* ================================================================ 记录 */
+function addLog(dir, name, obj){
+  logs.push({dir, name, obj: mask(obj), t: now()});
+  if (logs.length > 800) logs.shift();
+  const box = $("log"); if (box.querySelector(".empty-log")) box.innerHTML = "";
+  const d = document.createElement("div");
+  const cls = dir === "in" ? evCls({event: name}) : "";
+  d.className = `msg ${dir}`;
+  const sm = obj.message || obj.reason || obj.url || obj.phone || obj.stage || obj.state || "";
+  d.innerHTML = `<div class="mh"><span class="dir">${dir === "out" ? "↑" : dir === "in" ? "↓" : "•"}</span>
+    <span class="tag ${dir === "in" ? cls : dir === "out" ? "vio" : ""}"><span class="nm">${esc(name)}</span></span>
+    <span class="sm">${esc(typeof sm === "string" ? sm : "")}</span><time>${now()}</time></div>
+    <pre>${esc(JSON.stringify(mask(obj), null, 2))}</pre>`;
+  box.appendChild(d);
+  while (box.children.length > 800) box.firstChild.remove();
+  if ($("autoScroll").checked) box.scrollTop = box.scrollHeight;
+  $("cntOut").textContent = "↑ " + nOut; $("cntIn").textContent = "↓ " + nIn;
+}
+$("log").addEventListener("click", (e) => { const m = e.target.closest(".msg"); if (m && !e.target.closest("pre")) m.classList.toggle("open"); });
+$("btnClear").onclick = () => { logs = []; nOut = nIn = 0; $("log").innerHTML = '<div class="empty-log">已清空</div>'; $("cntOut").textContent = "↑ 0"; $("cntIn").textContent = "↓ 0"; };
+$("btnExport").onclick = () => {
+  const blob = new Blob([JSON.stringify({endpoint: ep && ep.path, url: wsUrl(), messages: logs}, null, 2)], {type: "application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ws-log-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
+};
+function toast(t){ addLog("sys", "提示", {message: t}); }
+
+/* ================================================================ 参数填报（按模板生成表单，和 JSON 双向同步） */
+let tpl = null;
+function loadTemplate(i){
+  const m = (ep["客户端发送"] || [])[i]; if (!m) return;
+  document.querySelectorAll(".tpl").forEach(b => b.classList.toggle("on", +b.dataset.i === i));
+  tpl = clone(m); const desc = tpl["说明"] || ""; delete tpl["说明"];
+  // 文档里的 "a|b|c" 枚举：默认取第一个，表单里做成下拉
+  tpl.__enum = {};
+  for (const [k, v] of Object.entries(tpl)) if (typeof v === "string" && /^[\w-]+(\|[\w-]+)+$/.test(v)){ tpl.__enum[k] = v.split("|"); tpl[k] = tpl.__enum[k][0]; }
+  if (tpl.password === "…") tpl.password = "";
+  $("rawName").textContent = tpl.action || tpl.type || "消息";
+  $("rawDesc").textContent = desc;
+  renderPform(); syncJson();
+}
+function renderPform(){
+  const en = tpl.__enum || {};
+  $("pform").innerHTML = Object.entries(tpl).filter(([k]) => k !== "__enum").map(([k, v]) => {
+    const fixed = (k === "action" || k === "type");
+    let input;
+    if (en[k]) input = `<select data-k="${k}">${en[k].map(o => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    else if (typeof v === "boolean") input = `<label class="chk"><input type="checkbox" data-k="${k}" ${v ? "checked" : ""}>${v ? "true" : "false"}</label>`;
+    else if (typeof v === "number") input = `<input type="number" data-k="${k}" value="${v}">`;
+    else if (v && typeof v === "object") input = `<input type="text" data-k="${k}" data-json="1" value="${esc(JSON.stringify(v))}">`;
+    else input = `<input type="${k === "password" ? "password" : "text"}" data-k="${k}" value="${esc(v)}" ${fixed ? "readonly" : ""}>`;
+    return `<div class="fld"><label class="lbl">${esc(k)}</label>${input}${fixed ? "<small>消息类型，固定</small>" : ""}</div>`;
+  }).join("") || '<p class="note">这条消息没有参数</p>';
+}
+$("pform").addEventListener("input", (e) => {
+  const el = e.target.closest("[data-k]"); if (!el) return;
+  const k = el.dataset.k;
+  if (el.type === "checkbox"){ tpl[k] = el.checked; el.parentElement.lastChild.textContent = String(el.checked); }
+  else if (el.type === "number") tpl[k] = el.value === "" ? null : Number(el.value);
+  else if (el.dataset.json){ try { tpl[k] = JSON.parse(el.value); el.style.borderColor = ""; } catch { el.style.borderColor = "var(--bad)"; return; } }
+  else tpl[k] = el.value;
+  syncJson();
+});
+const tplPayload = () => { const o = {...tpl}; delete o.__enum; return o; };
+function syncJson(){ $("rawJson").value = JSON.stringify(tplPayload(), null, 2); $("rawErr").textContent = ""; }
+$("rawJson").addEventListener("input", () => {
+  try { const o = JSON.parse($("rawJson").value); $("rawErr").textContent = ""; tpl = {...o, __enum: (tpl && tpl.__enum) || {}}; renderPform(); }
+  catch (e) { $("rawErr").textContent = "JSON 格式不对：" + e.message; }
+});
+$("btnFmt").onclick = () => { try { $("rawJson").value = JSON.stringify(JSON.parse($("rawJson").value), null, 2); $("rawErr").textContent = ""; } catch (e) { $("rawErr").textContent = "JSON 格式不对：" + e.message; } };
+$("btnSend").onclick = () => {
+  let o; try { o = JSON.parse($("rawJson").value); } catch (e) { $("rawErr").textContent = "JSON 格式不对：" + e.message; return; }
+  send(o);
+};
+$("tpls").addEventListener("click", (e) => { const b = e.target.closest(".tpl"); if (!b) return; loadTemplate(+b.dataset.i); setMode("raw"); });
+
+/* ================================================================ 模拟前台：按接口给出一个真实接入方会做的页面 */
+function setMode(m){
+  document.querySelectorAll("#modeTabs button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  $("front").hidden = m !== "front"; $("raw").hidden = m !== "raw";
+}
+$("modeTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setMode(b.dataset.m); });
+
+const LS = "otaops.wsplay.form";
+const saved = () => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch { return {}; } };
+const remember = (o) => { try { localStorage.setItem(LS, JSON.stringify({...saved(), ...o})); } catch {} };
+
+function renderFront(){
+  const p = ep.path;
+  cur = p === "/api/onboard" ? ONBOARD : p.startsWith("/api/login/") ? LOGIN : p.startsWith("/ws/") ? MAIN : null;
+  $("front").innerHTML = cur ? cur.html() : '<p class="note">这个接口没有前台示例，用「参数填报」直接发消息。</p>';
+  cur && cur.bind && cur.bind();
+}
+function front(kind, m){ cur && cur.on && cur.on(kind, m); }
+
+/* 进度时间线 */
+function steps(list){ return `<ul class="steps">${list.map(s => `<li class="${s.cls || ""}" data-s="${s.k}"><span class="ic">${s.n}</span>
+  <div><b>${esc(s.t)}</b><small>${esc(s.d || "")}</small></div><time></time></li>`).join("")}</ul>`; }
+function mark(k, cls, text){
+  const li = document.querySelector(`.steps li[data-s="${k}"]`); if (!li) return;
+  const all = [...document.querySelectorAll(".steps li")], i = all.indexOf(li);
+  if (cls === "cur" || cls === "done") all.slice(0, i).forEach(x => { if (!x.classList.contains("err")) { x.className = "done"; x.querySelector(".ic").textContent = "✓"; } });
+  li.className = cls; if (cls === "done") li.querySelector(".ic").textContent = "✓"; if (cls === "err") li.querySelector(".ic").textContent = "!";
+  if (text) li.querySelector("small").textContent = text;
+  li.querySelector("time").textContent = now();
+}
+function resetSteps(list){ const box = document.querySelector(".steps"); if (box) box.outerHTML = steps(list); }
+
+/* ---------------- /api/onboard：新商户上线 */
+const OB_STEPS = [
+  {k: "accepted", n: 1, t: "提交商户信息", d: "建号或更新已有账号"},
+  {k: "browser", n: 2, t: "打开浏览器", d: "后端启动携程后台登录页"},
+  {k: "filling", n: 3, t: "填写账号密码并提交", d: ""},
+  {k: "verify", n: 4, t: "人工验证（如需要）", d: "短信验证码或拖滑块，会发飞书通知"},
+  {k: "success", n: 5, t: "登录成功", d: "登录态已保存，自动加入每日定时采集"},
+];
+const ONBOARD = {
+  html(){ const s = saved();
+    return `<div class="phone">
+      <div class="two">
+        <div class="fld"><label class="lbl" for="obSid">景区 ID</label><input type="text" id="obSid" placeholder="PFTSCA01018088" value="${esc(s.scenic_id || "")}"></div>
+        <div class="fld"><label class="lbl" for="obName">景区名称</label><input type="text" id="obName" placeholder="九龙潭" value="${esc(s.scenic_name || "")}"></div>
+        <div class="fld"><label class="lbl" for="obAcc">账户</label><input type="text" id="obAcc" placeholder="vbk_569202" autocomplete="off" value="${esc(s.account || "")}"></div>
+        <div class="fld"><label class="lbl" for="obPwd">密码</label><input type="password" id="obPwd" placeholder="携程后台登录密码" autocomplete="new-password"></div>
+      </div>
+      <div class="row" style="margin:4px 0 16px"><button class="btn btn--lime" id="obGo" style="flex:1"><svg class="i"><use href="#i-send"/></svg>发起登录</button>
+        <button class="btn btn--red" id="obCancel" disabled>取消</button></div>
+      <p class="note" style="margin:-6px 0 14px">点「发起登录」= 连接 <span class="url" style="display:inline;padding:1px 6px">/api/onboard</span> 并发送
+        <b>start</b>。需要验证码时下面会出现输入框，回传的是 <b>code</b> 消息；成功或失败后服务端会主动断开。</p>
+      ${steps(OB_STEPS)}
+      <div id="obAsk"></div><div id="obResult"></div></div>`; },
+  bind(){
+    $("obGo").onclick = async () => {
+      const m = {action: "start", scenic_id: $("obSid").value.trim(), scenic_name: $("obName").value.trim(),
+                 account: $("obAcc").value.trim(), password: $("obPwd").value};
+      if (!m.account || !m.password){ toast("账户、密码必填"); return; }
+      remember({scenic_id: m.scenic_id, scenic_name: m.scenic_name, account: m.account});
+      resetSteps(OB_STEPS); $("obAsk").innerHTML = ""; $("obResult").innerHTML = "";
+      if (ws) { disconnect(); await new Promise(r => setTimeout(r, 300)); }
+      if (await connect()){ await send(m); mark("accepted", "cur"); $("obGo").disabled = true; $("obCancel").disabled = false; }
+    };
+    $("obCancel").onclick = () => send({action: "cancel"});
+  },
+  on(kind, m){
+    if (kind === "close"){ $("obGo").disabled = false; $("obCancel").disabled = true; return; }
+    if (kind !== "msg") return;
+    const e = m.event;
+    if (e === "accepted") mark("accepted", "done", m.message);
+    else if (e === "progress"){
+      const k = {browser: "browser", filling: "filling", submitted: "filling", notified: "verify", code: "verify"}[m.step] || "browser";
+      mark(k, "cur", m.message);
+    } else if (e === "need_code"){
+      mark("verify", "wait", `已发送短信验证码${m.phone ? "到 " + m.phone : ""}，等待回传`);
+      $("obAsk").innerHTML = `<div class="ask"><h3>请输入短信验证码</h3><p class="note" style="margin:0">发出的消息：{"action":"code","code":"…"}</p>
+        <div class="codebox"><input type="text" id="obCode" maxlength="8" inputmode="numeric" placeholder="123456">
+        <button class="btn btn--dark" id="obCodeGo">提交验证码</button></div></div>`;
+      $("obCode").focus();
+      const go = () => { const c = $("obCode").value.trim(); if (!c) return; send({action: "code", code: c}); $("obAsk").innerHTML = ""; mark("verify", "cur", "验证码已回传，正在登录"); };
+      $("obCodeGo").onclick = go; $("obCode").onkeydown = (ev) => { if (ev.key === "Enter") go(); };
+    } else if (e === "need_captcha"){
+      mark("verify", "wait", "需要人工拖滑块");
+      $("obAsk").innerHTML = `<div class="ask"><h3>需要人工拖滑块</h3><p class="note" style="margin:0 0 10px">在控制台打开这个账号的远程浏览器完成验证，完成后自动继续。</p>
+        <a class="btn btn--dark" href="${esc(m.link || "/")}" target="_blank" rel="noopener">打开远程浏览器</a></div>`;
+    } else if (e === "success"){
+      mark("success", "done"); $("obAsk").innerHTML = "";
+      $("obResult").innerHTML = `<div class="result ok"><h3>登录成功 · ${esc(m.account_id || "")}</h3><p>${esc(m.schedule || (m.scheduled ? "已加入每日定时采集" : ""))}</p></div>`;
+    } else if (e === "failed"){
+      const at = document.querySelector(".steps li.cur, .steps li.wait");
+      if (at) mark(at.dataset.s, "err", m.message);
+      $("obAsk").innerHTML = "";
+      $("obResult").innerHTML = `<div class="result bad"><h3>登录失败</h3><p>${esc(m.message || "")}</p></div>`;
+    }
+  },
+};
+
+/* ---------------- /api/login/{account_id}：完整登录 */
+const LG_STEPS = [
+  {k: "starting", n: 1, t: "浏览器就绪", d: ""},
+  {k: "filling", n: 2, t: "填写账号密码", d: ""},
+  {k: "submitted", n: 3, t: "提交并识别页面", d: ""},
+  {k: "verify", n: 4, t: "人工验证（如需要）", d: "need_sms / need_captcha"},
+  {k: "success", n: 5, t: "登录成功", d: ""},
+];
+const LOGIN = {
+  html(){ const s = saved();
+    return `<div class="phone">
+      <div class="two">
+        <div class="fld"><label class="lbl" for="lgAcc">account（可空，用配置里的）</label><input type="text" id="lgAcc" value="${esc(s.account || "")}"></div>
+        <div class="fld"><label class="lbl" for="lgPwd">password（可空）</label><input type="password" id="lgPwd" autocomplete="new-password"></div>
+        <div class="fld"><label class="lbl" for="lgTo">timeout（秒）</label><input type="number" id="lgTo" value="600"></div>
+        <div class="fld"><label class="lbl" for="lgSms">sms_wait（秒）</label><input type="number" id="lgSms" value="300"></div>
+      </div>
+      <label class="chk" style="margin-bottom:14px"><input type="checkbox" id="lgPersist" checked>persist：成功后把凭据写回 config.yaml</label>
+      <div class="row" style="margin-bottom:16px"><button class="btn btn--lime" id="lgGo" style="flex:1"><svg class="i"><use href="#i-send"/></svg>发送 login</button>
+        <button class="btn btn--red" id="lgAbort" disabled>abort</button></div>
+      ${steps(LG_STEPS)}<div id="lgAsk"></div><div id="lgResult"></div></div>`; },
+  bind(){
+    $("lgGo").onclick = async () => {
+      const m = {action: "login", timeout: +$("lgTo").value || 600, sms_wait: +$("lgSms").value || 300, persist: $("lgPersist").checked};
+      if ($("lgAcc").value.trim()) m.account = $("lgAcc").value.trim();
+      if ($("lgPwd").value) m.password = $("lgPwd").value;
+      resetSteps(LG_STEPS); $("lgAsk").innerHTML = ""; $("lgResult").innerHTML = "";
+      if (await send(m)){ $("lgGo").disabled = true; $("lgAbort").disabled = false; }
+    };
+    $("lgAbort").onclick = () => send({action: "abort"});
+  },
+  on(kind, m){
+    if (kind === "close"){ $("lgGo").disabled = false; $("lgAbort").disabled = true; return; }
+    if (kind !== "msg" || m.type !== "login") return;
+    const st = m.stage;
+    if (["starting","filling","submitted"].includes(st)) mark(st, "cur", m.message);
+    else if (st === "sms_filling") mark("verify", "cur", "正在填入验证码");
+    else if (st === "need_sms"){
+      mark("verify", "wait", `已发送短信验证码${m.phone ? "到 " + m.phone : ""}`);
+      $("lgAsk").innerHTML = `<div class="ask"><h3>请输入短信验证码</h3><p class="note" style="margin:0">发出的消息：{"action":"sms_code","code":"…"}</p>
+        <div class="codebox"><input type="text" id="lgCode" maxlength="8" inputmode="numeric" placeholder="123456"><button class="btn btn--dark" id="lgCodeGo">提交</button></div></div>`;
+      const go = () => { const c = $("lgCode").value.trim(); if (!c) return; send({action: "sms_code", code: c}); $("lgAsk").innerHTML = ""; };
+      $("lgCodeGo").onclick = go; $("lgCode").onkeydown = (ev) => { if (ev.key === "Enter") go(); };
+    } else if (st === "need_captcha"){
+      mark("verify", "wait", "需要人工拖滑块，在控制台的远程浏览器里完成");
+    } else if (st === "success"){
+      mark("success", "done");
+      $("lgResult").innerHTML = `<div class="result ok"><h3>登录成功</h3><p>${m.persisted ? "凭据已写回配置" : "凭据未写回"}${m.verified ? " · 登录态已校验" : ""}</p></div>`;
+    } else if (/failed|aborted/.test(st || "")){
+      const at = document.querySelector(".steps li.cur, .steps li.wait"); if (at) mark(at.dataset.s, "err", m.message);
+      $("lgResult").innerHTML = `<div class="result bad"><h3>${st === "aborted" ? "已中止" : "登录失败"}</h3><p>${esc(m.message || "")}</p></div>`;
+    }
+  },
+};
+
+/* ---------------- /ws/{account_id}：主通道（画面 + 操作） */
+const MAIN = {
+  html(){ return `
+    <div class="urlbar">
+      <button class="btn btn--sm" data-nav="back" title="后退"><svg class="i"><use href="#i-back"/></svg></button>
+      <button class="btn btn--sm" data-nav="forward" title="前进"><svg class="i"><use href="#i-fwd"/></svg></button>
+      <button class="btn btn--sm" data-nav="reload" title="刷新"><svg class="i"><use href="#i-redo"/></svg></button>
+      <input type="text" id="mUrl" placeholder="连接后显示当前页面地址；回车跳转">
+    </div>
+    <div class="screen" id="mScreen"><div class="empty">连接后显示远程浏览器画面（需要该账号的浏览器已打开）<br>点画面 = 发送 mouse down / up</div></div>
+    <div class="row" style="margin-top:12px;flex-wrap:wrap">
+      <input type="text" id="mText" placeholder="输入文字，发送 text 消息" style="flex:1;min-width:180px">
+      <button class="btn btn--dark" id="mTextGo">发送文字</button>
+    </div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn--sm" data-q='{"type":"refresh_frame"}'>refresh_frame</button>
+      <button class="btn btn--sm" data-q='{"type":"fill_login"}'>fill_login</button>
+      <button class="btn btn--sm" data-q='{"type":"save_state"}'>save_state</button>
+      <button class="btn btn--sm" data-q='{"type":"key","action":"down","key":"Enter","code":"Enter","keyCode":13}'>按 Enter</button>
+      <span style="flex:1"></span><span class="tag" id="mStatus">—</span><span class="tag" id="mFrames">0 帧</span>
+    </div>`; },
+  frames: 0,
+  bind(){
+    this.frames = 0;
+    $("front").querySelectorAll("[data-nav]").forEach(b => b.onclick = () => send({type: "nav", action: b.dataset.nav}));
+    $("front").querySelectorAll("[data-q]").forEach(b => b.onclick = () => send(JSON.parse(b.dataset.q)));
+    $("mUrl").onkeydown = (e) => { if (e.key === "Enter" && $("mUrl").value.trim()) send({type: "nav", action: "goto", url: $("mUrl").value.trim()}); };
+    const goText = () => { const t = $("mText").value; if (t) { send({type: "text", text: t}); $("mText").value = ""; } };
+    $("mTextGo").onclick = goText; $("mText").onkeydown = (e) => { if (e.key === "Enter") goText(); };
+  },
+  on(kind, m){
+    if (kind === "frame"){
+      let img = $("mScreen").querySelector("img");
+      if (!img){
+        $("mScreen").innerHTML = '<img alt="远程画面">'; img = $("mScreen").querySelector("img");
+        img.onclick = (e) => {
+          const r = img.getBoundingClientRect(), nw = img.naturalWidth, nh = img.naturalHeight;
+          const s = Math.min(r.width / nw, r.height / nh), ox = (r.width - nw * s) / 2, oy = (r.height - nh * s) / 2;
+          const x = Math.round((e.clientX - r.left - ox) / s), y = Math.round((e.clientY - r.top - oy) / s);
+          if (x < 0 || y < 0 || x > nw || y > nh) return;
+          const base = {type: "mouse", x, y, button: "left", buttons: 1, clickCount: 1, modifiers: 0};
+          send({...base, action: "down"}); send({...base, action: "up", buttons: 0});
+        };
+      }
+      img.src = "data:image/jpeg;base64," + m.data;
+      $("mFrames").textContent = (++this.frames) + " 帧";
+    } else if (kind === "msg"){
+      if (m.type === "url" && document.activeElement !== $("mUrl")) $("mUrl").value = m.url || "";
+      if (m.type === "status") $("mStatus").textContent = m.state || "—";
+    }
+  },
+};
+
+/* ================================================================ 启动 */
+$("ep").onchange = pickEndpoint;
+$("paramBox").addEventListener("input", updateUrl);
+$("btnConn").onclick = connect;
+$("btnClose").onclick = disconnect;
+loadSpec();
+</script>
+</body>
+</html>

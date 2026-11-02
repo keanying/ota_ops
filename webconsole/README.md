@@ -379,6 +379,22 @@ http://<console>/api/ws-spec
 python -m webconsole.ws_client spec
 ```
 
+**WebSocket 调试台**——`http://<console>/ws-playground`，入口在系统设置 → 常用入口。它按 `/api/ws-spec` 自动生成，不用写代码就能模拟前台接入。
+
+- **左栏：连接。**
+  - 选接口：`/api/onboard`、`/api/login/{account_id}` 或 `/ws/{account_id}`。
+  - 填路径参数后连接或断开，并列出这个接口客户端能发、服务端会推的全部消息。
+- **中栏：模拟前台页面。** 按真实接入方的做法写好的页面：
+  - `/api/onboard`：填景区 ID、景区名称、账户、密码，点「发起登录」。进度时间线实时更新；收到 `need_code` 时出现验证码输入框，回车即回传 `code`；收到 `need_captcha` 时给出远程浏览器链接；最后显示成功或失败卡片。
+  - `/api/login/{id}`：填 login 的各个参数，收到 `need_sms` 时出现验证码输入框。
+  - `/ws/{id}`：显示远程画面，点击画面会发 mouse down / up，也能发文字、导航和 `save_state` 等操作。
+- **中栏：参数填报。** 点左栏任意一条消息模板，会生成对应的表单：布尔值是勾选框，数字是数字框，`a|b` 这种写法是下拉框。表单和下面的 JSON 双向同步，改哪边都行，改完直接发送。
+- **右栏：收发记录。** 每条消息都带方向、事件名、时间，点开看完整 JSON。
+  - 密码自动打码；默认不记录画面帧。
+  - 可以导出成 JSON。
+
+地址可以带参数直接定位，例如 `/ws-playground?path=/ws/{account_id}&account_id=vbk_569202`。
+
 **2. 命令行客户端**（`webconsole/ws_client.py`，只依赖 `websockets`）：
 
 ```bash
@@ -539,6 +555,8 @@ ws.onmessage = (e) => {
 ```
 
 命令行试：`python -m webconsole.ws_client onboard --scenic-id PFT… --scenic-name 九龙潭 --account vbk_… --password …`
+
+浏览器里试：打开 `http://<console>/ws-playground`（系统设置 → 常用入口 →「WebSocket 调试台」）。
 
 - 同一个账号再发一次 `start` 不会报「已存在」，而是更新密码 / 景区 / 名称后重新登录；
 - 客户端中途断开会中止这次登录；

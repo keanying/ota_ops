@@ -1508,6 +1508,12 @@ def api_system() -> JSONResponse:
     })
 
 
+@app.get("/ws-playground", include_in_schema=False)
+def ws_playground() -> FileResponse:
+    """WebSocket 调试台：按 /api/ws-spec 生成可视化页面，手动连接、填参数、收发消息，模拟前台接入。"""
+    return FileResponse(BASE_DIR / "static" / "ws-playground.html")
+
+
 @app.get("/api/ws-spec", tags=["WebSocket"])
 def api_ws_spec() -> JSONResponse:
     """WebSocket 协议说明。
@@ -2251,6 +2257,7 @@ def main() -> None:
     print(f"控制台启动：http://{host}:{port}")
     print(f"接口文档：  http://{host}:{port}/docs"
           f"　WebSocket 协议：http://{host}:{port}/api/ws-spec")
+    print(f"WebSocket 调试台：http://{host}:{port}/ws-playground")
     print(f"运行平台：{platform.system()} {platform.release()}")
     print(f"画面模式：{STREAM_MODE} —— {label}")
     print(f"          {MODE_REASON}")
