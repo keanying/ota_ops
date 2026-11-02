@@ -446,9 +446,19 @@
 
   /* 浏览器弹窗 */
   .bw{display:grid;grid-template-columns:310px minmax(0,1fr);flex:1;min-height:0}
+  /* 最大化：弹窗占满整个窗口，只留画面 */
+  #mBrowser.max{padding:0}
+  #mBrowser.max .dlg{width:100%;height:100%;border-radius:0}
+  #mBrowser.max .dlg-hd{padding:8px 16px}
+  #mBrowser.max .bw{grid-template-columns:minmax(0,1fr)}
+  #mBrowser.max .bw-side{display:none}
+  #mBrowser.max .bw-main{grid-template-rows:minmax(0,1fr) 0}
+  #mBrowser.max .bw-log{display:none}
+  #mBrowser.max .stage{padding:0;border-radius:0}
+  #mBrowser.max #screen{border-radius:0;box-shadow:none}
   .bw-side{border-right:1px solid var(--line);overflow-y:auto;padding:18px 20px;background:#FBFCFF;border-bottom-left-radius:20px}
   .bw-main{display:grid;grid-template-rows:minmax(0,1fr) 170px;min-height:0}
-  .stage{position:relative;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;overflow:hidden;
+  .stage{position:relative;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0;overflow:hidden;
     background:radial-gradient(ellipse at 50% 35%,#2B3350 0%,#151A2B 100%)}
   #screen,#vncHost{display:none;max-width:100%;max-height:100%;border-radius:6px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.5)}
   #screen.on,#vncHost.on{display:block}
@@ -899,7 +909,8 @@
       <h3 id="bTitle">—</h3>
       <span class="tag" id="bTag">—</span>
       <span class="unit mono" id="bMeta" style="margin-left:6px"></span>
-      <button class="x" data-close="mBrowser" title="关闭（浏览器保持运行）">×</button>
+      <button class="btn btn--sm" id="btnMax" style="margin-left:auto" title="画面铺满整个窗口（隐藏左侧面板和日志）">⤢ 最大化</button>
+      <button class="x" data-close="mBrowser" title="关闭（浏览器保持运行）" style="margin-left:0">×</button>
     </div>
     <div class="bw">
       <aside class="bw-side">
@@ -1509,6 +1520,7 @@ function paintBrowserHeader(title){
 }
 // 关弹窗只断开画面，浏览器保持运行；登录进行中要确认，断开会中止登录
 closeHooks.mBrowser = () => {
+  if (!loginWs) setMax(false);
   if (loginWs){
     askConfirm({title: "关闭浏览器窗口", lead: "登录还在进行中，关闭窗口会中止这次登录。",
                 note: "浏览器本身会继续运行，之后可以重新打开窗口再登录。",
@@ -1565,7 +1577,7 @@ function connect(){
   const p = location.protocol === "https:" ? "wss" : "ws";
   const sock = new WebSocket(`${p}://${location.host}/ws/${encodeURIComponent(current)}`);
   ws = sock;
-  sock.onopen = () => { if (browserLive && streamMode === "cdp") send({type:"refresh_frame"}); };
+  sock.onopen = () => { if (browserLive && streamMode === "cdp"){ send({type:"refresh_frame"}); fitScreen(true); } };
   sock.onmessage = (e) => handle(JSON.parse(e.data));
   sock.onclose = () => {
     if (ws !== sock || !$("mBrowser").classList.contains("on")) return;
@@ -1598,7 +1610,7 @@ function handle(m){
       log(m.message, m.state === "error" ? "error" : "info", m.at);
       if (m.state === "live"){
         setStarting(false); setLive(true);
-        if (streamMode === "vnc") startVnc(); else send({type:"refresh_frame"});
+        if (streamMode === "vnc") startVnc(); else { send({type:"refresh_frame"}); fitScreen(true); }
       }
       if (m.state === "closed" || m.state === "error"){ setStarting(false); setLive(false); }
       break;
@@ -1711,7 +1723,7 @@ async function startBrowser(){
     log(r.message, r.reused ? "done" : "info");
     if (r.ready){
       setStarting(false); setLive(true);
-      if (streamMode === "vnc") await startVnc(); else send({type:"refresh_frame"});
+      if (streamMode === "vnc") await startVnc(); else { send({type:"refresh_frame"}); fitScreen(true); }
     }
   } catch (e){
     setStarting(false);
@@ -1820,6 +1832,7 @@ function handleLogin(m){
       needAttention("需要你完成滑块验证 · 在画面里按住拖到底");
       break;
     case "need_sms":
+      setMax(false);           // 验证码输入框在左侧面板里，最大化时先还原
       setStep("captcha", "done"); setStep("sms", "now"); clearAttention();
       $("smsBox").style.display = "block"; $("smsCode").focus();
       needAttention(`短信验证码已发送${m.phone ? " · " + m.phone : ""} · 填在左侧`);
@@ -1867,6 +1880,31 @@ setInterval(() => {
   if (frames > 0 && painted === 0) log("收到画面但未能绘制，试试刷新页面", "warn");
   frames = painted = 0;
 }, 1000);
+
+/* ---- 画面铺满：把远程浏览器的视口调成画面区域的大小 ---- */
+let fitTimer = null, lastFit = "";
+function fitScreen(force){
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => {
+    if (!browserLive || streamMode !== "cdp" || !$("mBrowser").classList.contains("on")) return;
+    const st = document.querySelector("#mBrowser .stage");
+    const pad = $("mBrowser").classList.contains("max") ? 0 : 16;
+    const w = Math.round(st.clientWidth - pad), h = Math.round(st.clientHeight - pad);
+    if (w < 300 || h < 200) return;
+    const key = `${w}x${h}`;
+    if (!force && key === lastFit) return;
+    lastFit = key;
+    send({type: "resize", width: w, height: h});
+  }, 250);
+}
+window.addEventListener("resize", () => fitScreen());
+function setMax(on){
+  $("mBrowser").classList.toggle("max", on);
+  $("btnMax").textContent = on ? "⤡ 还原" : "⤢ 最大化";
+  $("btnMax").title = on ? "还原（显示左侧面板和日志）" : "画面铺满整个窗口（隐藏左侧面板和日志）";
+  fitScreen(true);
+}
+$("btnMax").onclick = () => setMax(!$("mBrowser").classList.contains("max"));
 
 /* ================================================================ 运行记录 */
 const SRC = {manual:"手动", schedule:"定时", catchup:"补采", login:"首采"};

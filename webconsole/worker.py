@@ -414,14 +414,56 @@ class BrowserWorker(threading.Thread):
             self._save_state()
         elif kind == "refresh_frame":
             self.keyframe()
+        elif kind == "resize":
+            self._resize(cmd)
         elif kind == "quality":
             opts = dict(SCREENCAST_OPTS)
             self.quality = max(20, min(90, int(cmd.get("value", 60))))
-            opts["quality"] = self.quality
+            opts.update(quality=self.quality, maxWidth=self.surface["width"],
+                        maxHeight=self.surface["height"])
             self._cdp.send("Page.stopScreencast")
             self._cdp.send("Page.startScreencast", opts)
             self.keyframe()
             self.emit("log", level="info", message=f"画质已设为 {self.quality}")
+
+    def _resize(self, cmd: dict) -> None:
+        """按页面上画面区域的大小调整浏览器窗口和视口，让画面铺满、不留黑边。
+
+        只改尺寸，不缩放：页面按新尺寸重新布局，帧和坐标仍然 1:1，
+        鼠标点击位置不会偏。尺寸限制在常见桌面分辨率范围内，避免太小导致页面变成窄屏布局。
+        """
+        if self.mode == "vnc" or self._cdp is None:
+            return
+        w = max(1024, min(2560, int(cmd.get("width") or VIEWPORT["width"])))
+        h = max(600, min(1600, int(cmd.get("height") or VIEWPORT["height"])))
+        if (w, h) == (self.surface["width"], self.surface["height"]):
+            return
+        try:
+            win = self._cdp.send("Browser.getWindowForTarget")
+            self._cdp.send("Browser.setWindowBounds", {
+                "windowId": win["windowId"],
+                "bounds": {"width": w, "height": h, "windowState": "normal"}})
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self._page.set_viewport_size({"width": w, "height": h})
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self._cdp.send("Emulation.setDeviceMetricsOverride", {
+                "width": w, "height": h, "deviceScaleFactor": 1, "mobile": False})
+        except Exception:  # noqa: BLE001
+            pass
+        self.surface = {"width": w, "height": h}
+        opts = dict(SCREENCAST_OPTS)
+        opts.update(quality=self.quality, maxWidth=w, maxHeight=h)
+        try:
+            self._cdp.send("Page.stopScreencast")
+            self._cdp.send("Page.startScreencast", opts)
+        except Exception as exc:  # noqa: BLE001
+            self.emit("log", level="warn", message=f"调整画面尺寸后重启推流失败：{exc}")
+        self.keyframe()
+        self.emit("log", level="info", message=f"画面已按窗口调整为 {w}×{h}")
 
     def _mouse(self, cmd: dict) -> None:
         action = cmd.get("action")
