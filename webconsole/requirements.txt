@@ -1,0 +1,5 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+websockets>=12.0
+
+# ws_client 命令行客户端也用 websockets（上面已含）

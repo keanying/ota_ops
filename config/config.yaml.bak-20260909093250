@@ -1,0 +1,149 @@
+# =============================================================================
+# 携程商家后台采集配置模板
+# 使用方式：cp config/config.example.yaml config/config.yaml 后按需修改
+#
+# 敏感信息建议写成 ${ENV_VAR} 占位符，由环境变量注入，避免明文入库/入仓：
+#   password: "${CTRIP_A001_PASSWORD}"
+# 也支持带默认值：${CTRIP_HOST:-127.0.0.1}
+#
+# 任意配置项都可被环境变量覆盖，命名规则 CTRIP__<段>__<键>，例如：
+#   CTRIP__RUN__SINK=both
+#   CTRIP__MYSQL__ENABLED=true
+#   CTRIP__MYSQL__HOST=10.0.0.5
+# =============================================================================
+
+run:
+  timezone: Asia/Shanghai
+  # 数据落地方式：csv（默认）| mysql | both
+  sink: csv
+  output_dir: data/output          # CSV 输出根目录，内部按 account_id 分子目录
+  log_dir: logs                    # 日志根目录，内部按 account_id 分子目录
+  log_level: INFO                  # DEBUG | INFO | WARNING | ERROR
+  csv_encoding: utf-8-sig          # 带 BOM，Excel 打开不乱码
+  csv_with_label_row: false        # true 时在英文表头上方多写一行中文表头（便于人看，不便于入库）
+  csv_overwrite: true              # 同一批次重复运行覆盖文件，避免重复累积
+  csv_split_by_run_key: false      # true 时每个采集区间单独成文件（临时导出用）
+  # 写入模式（CSV 与 MySQL 行为一致）：
+  #   overwrite（默认）同一交易日期 / 评价月份的旧数据先清理再写入，
+  #     能真正做到「以本次采集结果为准」，连上游已下线的维度也会被清除；
+  #     清理范围始终限定当前 account_id，不会影响其他账号的同期数据。
+  #   upsert 仅按唯一键原地更新，不删除任何行。
+  write_mode: overwrite
+  workers: 1                       # 账号级并发数；1 = 串行（对风控更友好）
+
+# -----------------------------------------------------------------------------
+# MySQL：默认关闭。配置好之后把 enabled 改成 true，并把 run.sink 改为 mysql 或 both
+# 表结构统一在 ctrip/schema.py 维护，执行 `python -m ctrip.cli init-db` 建表
+# -----------------------------------------------------------------------------
+mysql:
+  enabled: true
+  host: localhost
+  port: 3306
+  user: opinionhub
+  password: 8drfEYnxAdcW5aP3
+  database: opinionhub
+  charset: utf8mb4
+  table_prefix: ""                 # 需要与其他业务表区分时可加前缀，如 ods_
+  # shared：所有账号写同一批表，唯一键以 account_id 开头，天然隔离（推荐，便于跨账号汇总）
+  # per_account：每个账号建立独立物理表 ads_sup_ota_ctrip_trade_di_{account_id}（强隔离，跳账号查询需 UNION）
+  table_strategy: shared
+  connect_timeout: 10
+  write_run_log: true              # 是否写采集审计表 ads_service_ota_ctrip_run_log
+
+# -----------------------------------------------------------------------------
+# 携程站点与账号
+# -----------------------------------------------------------------------------
+ctrip:
+  login_url: https://vbooking.ctrip.com/micro/ivbk/accountV2/dashboard
+  home_url: https://vbooking.ctrip.com/micro/tour-bi-vendor-new/
+  api_base: https://m.ctrip.com/restapi/soa2/13807
+
+  headless: true                   # 服务器无 GUI 时保持 true；需人工过验证码时用 --no-headless
+  slow_mo: 0                       # 调试时可设 200（毫秒），便于观察
+  login_timeout: 180               # 登录总超时（秒），留足人工处理验证码时间
+  nav_timeout: 45                  # 单次页面跳转超时（秒）
+  cookie_dir: auth                 # 登录态根目录，内部按 account_id 分子目录
+  cookie_ttl_hours: 12             # 登录态超过该时长强制重新校验
+  login_retry: 2                   # 登录失败重试次数
+
+  # -- 持久化浏览器（降低验证码触发概率的关键）-------------------------
+  # 开启后浏览器用户数据目录固定在项目内 browser/{account_id}/profile，
+  # Cookie / localStorage / IndexedDB / 缓存 / 设备指纹全部留存在磁盘上，
+  # 携程看到的是「同一台设备重复登录」而非「陌生设备」，因此不再反复弹滑块。
+  # 关闭则退回旧行为（每次全新临时 profile，每次登录都可能要过验证）。
+  persistent_browser: true
+  browser_dir: browser             # 浏览器持久化根目录（已 gitignore）
+  # CDP 常驻端口：设为 9222 等非零值后，可用 `browser --start` 拉起常驻浏览器，
+  # 后续运行直接 connect_over_cdp 复用已打开的浏览器（多账号按序号自动递增端口）。
+  # 0 = 不启用常驻，仅依靠磁盘上的 profile 复用（已足以避开验证码，且更稳健）。
+  cdp_port: 0
+
+  # 账号来源：
+  #   config（默认）读下方 accounts + .env
+  #   mysql        从账号表 ads_service_ota_ctrip_account 读（适合账号统一存库）
+  #   api          从账号管理服务拉取
+  #   auto         依次尝试 api -> mysql -> config，取第一个拿到账号的源
+  # 任何外部源取不到数据时都会自动回落到配置文件，不会直接失败
+  account_source: config
+  # 账号表中存密码的列名（仅 account_source=mysql/auto 时使用）。
+  # 本工具同步的维表刻意不存密码；若你自行在表里加了密码列，在此指定其列名。
+  # 表中若无该列，会自动降级为「账号读库、密码读 .env」，不会报错。
+  account_password_column: password
+
+  # 账号管理 API（account_source=api/auto 时生效）
+  account_api_url: ""
+  account_api_token: ""
+  account_api_timeout: 10
+
+  # 离线账号列表。密码强烈建议用环境变量注入
+  #
+  # scenic_id：景区 ID（如 PFTSCA01018088），**账号级绑定**，一个账号对应一个景区。
+  #   采集时会自动写入三张业务表的每一行，方便与内部景区维表关联。
+  #   不属于敏感信息，可直接写在这里；也可用 ${CTRIP_A001_SCENIC_ID} 环境变量注入。
+  #   后期修正绑定关系：改完重跑即可，UPSERT 会原地回填历史数据的 scenic_id。
+  accounts:
+    - account_id: vbk_569202             # 唯一标识，会写入 CSV/数据库、用于分目录，仅允许字母数字_-
+      name: 九龙潭商户
+      account: vbk_569202
+      password: ZYLXs@12301
+      scenic_id: PFTSCA01018088    # 景区ID，账号级绑定
+      status: active               # active | disabled
+      remark: 九龙潭
+
+    # - account_id: A002
+    #   name: 第二个账号
+    #   account: "${CTRIP_A002_ACCOUNT}"
+    #   password: "${CTRIP_A002_PASSWORD}"
+    #   scenic_id: PFTSCA01018099
+    #   status: active
+
+# -----------------------------------------------------------------------------
+# 采集参数
+# -----------------------------------------------------------------------------
+collect:
+  kylin_days: 30                   # 交易卡片默认回溯天数
+  batch_days: 30                   # 单次请求的日期跨度
+  request_interval: 1.5            # 请求间隔（秒），防限流
+  max_retries: 3
+  retry_backoff: 5.0               # 指数退避基数（秒）
+  timeout: 30                      # 单次接口超时（秒）
+  date_types:
+    - 使用日期
+    - 预订日期
+  # 交易卡片周期口径（对应落库字段 period_type）：
+  #   1d  按区间逐日采，每天一行（历史回溯只影响这一种）
+  #   7d  近 7 日聚合，仅当前窗口 1 行
+  #   30d 近 30 日聚合，仅当前窗口 1 行
+  #
+  # 默认只采 1d：7d/30d 是「当前快照」，每跑一次都会额外发请求，
+  # 而这两个口径也能由 1d 明细在下游 SQL 里聚合得出。
+  # 确实需要直接入库时，取消下方注释，或临时用 --period 7d,30d。
+  periods:
+    - 1d
+    # - 7d
+    # - 30d
+  # 签约类型中文名 -> 携程 code。遇到日志提示「未知签约类型」时在此补充
+  signing_name_to_code:
+    跟团游: 1
+    私家团: 6
+    景点玩乐: 7

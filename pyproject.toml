@@ -1,0 +1,54 @@
+[project]
+name = "ctrip-collector"
+version = "1.8.1"
+description = "携程商家后台（VBooking）多账号自动登录与数据采集工具，默认落 CSV，可切换 MySQL"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+    "PyYAML>=6.0.1",
+    "playwright>=1.44.0",
+    "PyMySQL>=1.1.0",
+    "cryptography>=42.0.0",
+    "tenacity>=8.2.3",
+    "pip-system-certs>=5.3",
+    # Windows 不自带系统时区数据库（Linux 有 /usr/share/zoneinfo），
+    # 缺少时 zoneinfo.ZoneInfo("Asia/Shanghai") 会抛 ZoneInfoNotFoundError。
+    # 仅在 Windows 安装，避免 Linux 服务器上多一个多余依赖。
+    "tzdata>=2024.1; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+ctrip-collector = "ctrip.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ctrip"]
+
+# ---------------------------------------------------------------------------
+# 数据库初始化配置：由 `python -m ctrip.cli init-db` 读取，
+# 所有 DDL 由 ctrip/schema.py 单一数据源生成，此处仅声明初始化行为。
+# ---------------------------------------------------------------------------
+[tool.ctrip-collector.database]
+# 初始化时是否自动创建数据库（CREATE DATABASE IF NOT EXISTS）
+create_database = true
+# 建表语句执行策略：if_not_exists（默认，安全）| drop_create（危险，仅开发环境）
+table_init_mode = "if_not_exists"
+# 需要初始化的表（对应 schema.py 中的 TABLES 键；留空表示全部）
+tables = []
+# 初始化后是否写入账号维表记录（来自 config.yaml 的 ctrip.accounts）
+seed_accounts = true
+# 生成 DDL 文件的输出路径
+ddl_output = "sql/ddl.sql"
+
+[tool.ctrip-collector.runtime]
+default_sink = "csv"
+default_timezone = "Asia/Shanghai"

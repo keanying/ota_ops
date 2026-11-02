@@ -1,0 +1,677 @@
+# Web 控制台
+
+服务器上的 Chromium，通过网页实时操作：点击、拖动、输入、滚轮都是真事件；
+另有采集日数据 / 月数据的按钮，日志实时回流页面。
+
+## 放哪
+
+解压到项目根目录，与 `ctrip/` 同级：
+
+```
+ctrip_collector-1.0.0/
+├── ctrip/
+├── auth/
+├── browser/
+├── webconsole/          ← 新增
+│   ├── app.py           FastAPI：账号、会话、WebSocket、采集任务
+│   ├── worker.py        浏览器工作线程：CDP 推流 + 输入派发
+│   └── static/index.html
+└── run_console.sh       ← 新增
+```
+
+## 画面模式
+
+默认 **`cdp`**：无头浏览器 + CDP `Page.startScreencast`。Windows、Linux 一样跑，
+不需要任何系统依赖。
+
+这是**推流不是轮询**：合成器在画面变化时主动推帧。静止页面不推新帧是对的——
+画面没变就没有新东西可传，canvas 保留上一帧即可。实测数据：
+
+| 场景 | 帧数 |
+|---|---|
+| 打开静态页 | 6 帧后停 |
+| 静置 2.5 秒 | **0 帧**（不是轮询） |
+| 拖动滑块 2 秒 | 30 帧（跟手） |
+
+只在三个时机主动补一帧：绑定页面、导航完成、点「重取画面」。除此之外不做任何
+周期性截图。
+
+`vnc` 模式（`CONSOLE_STREAM=vnc`）仍保留，用 Xvfb + x11vnc，延迟更低，
+但**必须有头浏览器**——无头没有窗口，x11vnc 抓不到东西。只在 Linux 上可用。
+
+## 装与启动
+
+**Linux（生产）**
+
+```bash
+sudo apt-get install -y xvfb x11vnc            # VNC 实时流需要
+pip install -r webconsole/requirements.txt
+bash run_console.sh
+```
+
+**Windows（开发）**
+
+```bat
+pip install -r webconsole\requirements.txt
+run_console.bat
+```
+
+或 PowerShell：`.\run_console.ps1`。默认 `local` 模式：点「开启浏览器」后
+Chromium 会**直接弹在你桌面上**，滑块验证码用自己的鼠标拖就行；
+登录编排、飞书通知、采集按钮在网页里照常可用。
+
+想在 Windows 上顺便看看内嵌画面长什么样，`set CONSOLE_STREAM=cdp` 再启动——
+但那是逐帧 JPEG，不是实时流，只适合看 UI，不适合拖滑块。
+
+默认只监听 `127.0.0.1:8800`。从本地访问服务器上的控制台，开个 SSH 隧道：
+
+```bash
+ssh -N -L 8800:127.0.0.1:8800 bi_normal_user@<服务器>
+# 然后本地浏览器打开 http://127.0.0.1:8800
+```
+
+要直接暴露内网就 `CONSOLE_HOST=0.0.0.0 bash run_console.sh`。**别暴露公网**——
+能打开这个页面的人，就能操作已登录的携程后台。
+
+## 怎么用
+
+1. 左侧选账号（状态灯：绿=登录态有效，黄=已过期/浏览器在线，红=从未登录）
+2. **开启浏览器** → 画面出现，右上角 `LIVE` 灯开始跳
+3. **打开登录页** → **自动填账号密码**（走项目自己的 `_fill_credentials`，选择器与 `login()` 一致）
+4. 出滑块验证码，直接在画面上按住拖动
+5. 登录进去后点 **保存登录态** → 写 `auth/{account_id}/storage_state.json` + `meta.json`，
+   并立刻调 `verify_cookie()` 复验，结果弹在右下角
+6. **采集日数据** / **采集月数据** → 起子进程跑 `python -m ctrip.cli collect ...`，日志实时滚在下方
+
+按钮到命令的映射：
+
+| 面板 | 实际执行 |
+|---|---|
+| 采集日数据（回溯 N 天） | `collect --job kylin --days N` |
+| 采集日数据（起止日期） | `collect --job kylin --start-date A --end-date B` |
+| 采集月数据 | `collect --job rating --job score [--month YYYY-MM]` |
+
+落地方式下拉框对应 `--sink`，默认取配置里的 `run.sink`。
+
+## 新建账号
+
+账号存在项目自己的 `config/config.yaml` 的 `ctrip.accounts` 里，字段与你现有的一致：
+
+| 字段 | 来源 |
+|---|---|
+| `account_id` | **取登录账号本身**，如 `vbk_569202` |
+| `name` / `account` / `password` / `remark` / `scenic_id` | 页面填写或 API 传入 |
+| `status` | 默认 `active` |
+
+`account_id` 会成为目录名（`browser/{id}/profile`、`auth/{id}/`）和数据库里的账号标识，
+用登录账号本身比 A002 这种流水号直观——看日志、翻目录、查库都能一眼对上是哪个号。
+
+只保留字母数字下划线连字符，其余字符转成下划线（`a@b.com` → `a_b_com`），
+超过 50 字符截断。账号里全是非法字符时才退回流水号。
+仅大小写不同的账号会被拒绝——它们在某些文件系统上会共用同一个目录。
+
+```
+POST /api/accounts
+{"name":"九龙潭商户","account":"vbk_888888","password":"pw@123",
+ "remark":"九龙潭","scenic_id":"PFTSCA01018088"}
+→ {"ok":true,"account_id":"vbk_888888","message":"账号已创建：vbk_888888"}
+```
+
+页面上在登录标签的「新账户登录」里，填完点一个按钮就走完：
+**建账号 → 开浏览器 → 填表登录 → 遇滑块通知你来拖 → 遇短信在页面填码 → 保存登录态**。
+你在表单里填的账号密码会**直接带进登录流程**，不用再在「登录当前账号」里填一遍。
+
+写入 config.yaml 是**定点插入**，不是整文件重写——你那份配置注释很多，
+用 `yaml.safe_dump` 会把注释全冲掉。写入前自动备份成 `config.yaml.bak-<时间戳>`，
+写入后用项目自己的 `load_config` 复核，解析不过或读回的账号对不上就**回滚**，
+不会留下坏掉的配置。密码里的 `@ : # "` 等字符会正确引用。
+
+新账号建完立刻可用：`_cfg` 热更新，采集子进程读的是同一份 config.yaml。
+
+> config.yaml 里是明文密码（和你现有 A001 一样）。文件权限会设成 600，
+> 但**别把它提交到 git**。
+
+## 界面结构
+
+按「做什么」分四个标签，不按功能模块分：
+
+| 标签 | 放什么 |
+|---|---|
+| **运行** | 当前账号、打开浏览器、登录、手动采集 —— 日常九成操作 |
+| **账号** | 新增账号、排障（释放 profile 占用） |
+| **定时** | 定时采集、定时补推、最近运行 |
+| **设置** | 下游接口、表与主键、飞书通知 |
+
+每个标签内用可折叠分组，常用的默认展开、配置类默认收起。
+「手动分步」（打开登录页 / 填账号密码 / 保存登录态）是自动登录走不通时的备选，
+折在登录组里面，不占日常视线。
+
+> `<details>` 有个坑：作者样式里给按钮写了 `display:block` 会**盖掉浏览器隐藏
+> 折叠内容的默认行为**，收起了却还看得见。所以显式写了
+> `.grp:not([open]) > *:not(summary){display:none !important}`。
+
+## 定时采集
+
+在「采集」标签里配：每天几点采日数据、回补几天，每月几号几点采月数据（上月）。
+
+**一条链路跑完**：定时到点 → 采集（写本地 MySQL）→ 采集完成回调 → 推送下游。
+所以配了定时采集，「同步」那边的定时就只是兜底（补推没推成功的），不必两边都开。
+
+几条刻意的规则：
+
+- **登录态失效就跳过，并发飞书通知。** 采集靠 Cookie，过期时硬跑只会得到一堆
+  失败请求，不如直接叫人来登一次。可以关掉这个检查。
+- **账号之间串行。** 同时跑多个子进程会一起压 MySQL 和对方接口；
+  同一账号已有任务在跑时直接跳过，不排队堆积。
+- **账号可白名单。** 留空就是所有 `status: active` 的账号。
+
+「预览会跑哪些账号」按钮不实际采集，只列出每个账号会跑什么参数、或因为什么被跳过。
+
+采集与同步共用同一个调度线程和同一套时间计算，所以「每天几点 / 每月几号几点」
+两边语义完全一致。改完配置立刻生效，不用重启服务。
+
+### 触发判据
+
+判据是「**到点或已过点，且这个时刻还没跑过**」，不是「距离下次不到 N 秒」。
+后者只能在目标时刻**之前**的一小段窗口里命中——到点当秒 `next_*` 就跳到下一周期，
+窗口一旦被别的任务占住（采集动辄几分钟）当天就整个跳过。这正是之前「定时没生效」
+的原因。
+
+服务启动时，错过不超过 30 分钟的时刻会补跑一次；更久以前的只记录不补跑
+（服务停了两天再起来，没必要把前天的翻出来跑）。
+
+> 和服务器 crontab 里的 `run_collect.sh` 是两套东西。用了控制台定时就别再让
+> crontab 跑同一个账号，否则会撞上「已有任务在跑」或 profile 占用。
+
+## 数据同步（推给下游 API）
+
+采集**始终直写本地 MySQL**；推给下游是另一件事，由控制台在采集完成后单独调 API。
+两件事分开做，**API 不通不会影响入库**。CSV 落地已移除——它既不是落库也不是上报。
+
+### 页面上配什么
+
+「同步」标签里全部可配，不用改代码：
+
+| 配置 | 说明 |
+|---|---|
+| 地址 | 下游 `crossDomainSync` 的完整 URL |
+| Key 头名 / Key | 默认 `xpftkey`，换个网关改头名即可 |
+| 每批行数 | 默认 200 |
+| **tableName** | 下游那边叫什么由对方定，留空才用本地表名 |
+| **pkId** | 下游要的主键 |
+| 回溯 | 定时补推时往前取几天 / 几个月 |
+| 采集后推送 | 默认开 |
+| 定时补推 | 每天几点、每月几号几点 |
+
+> **pkId 不等于本地唯一键。** 本地交易表的唯一键是
+> `account_id + transaction_date + period_type + signing_code + biz_type + date_type`，
+> 而下游示例里只要 `account_id + scenic_id + transaction_date + date_type`。
+> 所以不能拿表结构里的唯一键直接当 pkId 用，必须按下游文档单独填。
+
+### 推送时机
+
+**采集完成后立刻推本次数据。** 只推这一次采集覆盖的时间窗口和这一个账号，
+不会把无关的历史一起重推。采集失败（退出码非 0）不推。
+
+**定时补推**用于兜底：网络抖动、下游维护导致某次没推成功时，按配置的回溯窗口
+重新推一遍。下游是 UPSERT，重推安全。
+
+### 报文
+
+`data` 由控制台组装，从本地表读出来后做类型转换：
+
+```json
+{
+  "tableName": "ads_sup_ota_ctrip_trade_di",
+  "pkId": ["account_id","scenic_id","transaction_date","date_type"],
+  "data": [{"account_id":"A001","transaction_date":"2025-09-16",
+            "turnover":"312.00","refund_rate":"0.500000", ...}]
+}
+```
+
+`Decimal` 转字符串**保留原始标度**（`0.500000` 不会变成 `0.5`）——转 float 会掉精度，
+金额和比率都受影响。`date` 转 `YYYY-MM-DD`，`datetime` 转 `YYYY-MM-DD HH:MM:SS`，
+本地自增 `id` 不推（对下游没有意义）。
+
+`code != 0` 或 `status: false` 视为失败。5xx / 超时会重试（默认 2 次，指数退避），
+**4xx 不重试**——报文格式错或鉴权失败，重试多少次都一样。
+
+### 手动操作
+
+「试运行」只取数不推送，用来确认窗口和行数对不对；「立即同步日/月数据」按配置的
+回溯窗口推一次。最近 10 次运行记录在页面下方。
+
+## 页面怎么用
+
+三个标签页对应真实流程：**登录 → 采集 → 通知**。
+
+登录标签按账号状态分成两种形态，不再把所有控件堆在一起：
+
+**已登录的账号**（登录态有效）只显示账号信息卡和「修改密码」——
+不需要再登一次，也就不该摆一堆登录控件让你犹豫。改密码写进 config.yaml，
+**不影响当前登录态**（登录态是 Cookie，与密码无关），下次需要重登时才用到。
+真遇到登录态提前失效，还有一个「重新登录」按钮兜底。
+
+**未登录或已过期的账号**才显示登录流程：步骤条、本次登录信息条、账号密码、
+是否写回配置、开始登录。
+
+顶栏的账号下拉菜单也按「已登录 / 待登录」分组，一眼看出哪些号需要处理。
+
+**新增账号**是独立分区，整条链路走同一条 WebSocket：
+建账号 → 开浏览器 → 填表登录 → 验证 → 保存登录态 → 首次采集近两年，
+每一步都打在右下角日志里。勾选「登录成功后立即采集近两年日数据」即可。
+
+## 怎么查看和试调用 WebSocket API
+
+FastAPI 的 `/docs` **只列 HTTP 路由，WebSocket 不在 OpenAPI 规范里**，所以在那儿找不到。
+三个办法：
+
+**0. 可直接抄的样例**
+
+```
+python -m webconsole.ws_client example
+```
+
+五段完整代码：已有账号登录、新账号建号+登录+首采、看采集进度、远程拖滑块、命令行等价操作。
+
+**1. 协议速查**——浏览器直接打开，或命令行看：
+
+```
+http://<console>/api/ws-spec
+python -m webconsole.ws_client spec
+```
+
+**2. 命令行客户端**（`webconsole/ws_client.py`，只依赖 `websockets`）：
+
+```bash
+# 跑一次完整登录：卡验证时会提示，短信码在终端输入
+python -m webconsole.ws_client login --account-id vbk_569202
+python -m webconsole.ws_client login --account-id vbk_569202 \
+    --account vbk_569202 --password 'xxx'
+
+# 观察主通道：帧、状态、采集日志，不发任何指令
+python -m webconsole.ws_client watch --account-id vbk_569202
+
+# 手动发一条指令
+python -m webconsole.ws_client send --account-id vbk_569202 \
+    --json '{"type":"nav","action":"goto"}'
+```
+
+密码在回显里会打码成 `***`。默认连 `127.0.0.1:8800`，用 `--host/--port` 改。
+
+**3. wscat / websocat** 手搓：
+
+```bash
+npm i -g wscat
+wscat -c ws://127.0.0.1:8800/api/login/vbk_569202
+> {"action":"login","account":"vbk_569202","password":"xxx"}
+< {"type":"login","stage":"need_sms","phone":"138****8888"}
+> {"action":"sms_code","code":"123456"}
+< {"type":"login","stage":"success","verified":true}
+```
+
+## 账号密码存在哪
+
+**统一存在 `config/config.yaml` 的 `ctrip.accounts`**，不另起第二套真源——
+账号本身必须在这儿（否则 CLI 采集找不到账号），密码要是另存 JSON/SQLite，
+两边不一致时谁说了算就成了新的坑。
+
+| 途径 | 何时落盘 |
+|---|---|
+| `POST /api/accounts` 建账号 | 立即写入 |
+| WS `{"action":"login","password":…}` | **登录成功且 cookie 校验通过后**写回 |
+| 两者都不给 | 用配置里已有的，不写 |
+
+### 只保存登录成功的凭据
+
+存一个登不进去的密码没有意义，还会覆盖掉配置里原本可能正确的那个。所以落盘发生在
+`verify_cookie()` 通过之后，四种情况实测过：
+
+| 情况 | 是否落盘 |
+|---|---|
+| 登录成功 + 校验通过 | ✅ 写入 |
+| 登录成功但 cookie 校验没过 | ❌ 不写 |
+| `persist: false` | ❌ 不写 |
+| 没传凭据（用的配置里的） | ❌ 不写（本来就一样） |
+
+WS 里传 `"persist": false` 可以关掉，页面上对应「登录成功后把凭据写回 config.yaml」
+复选框，默认勾选。
+
+### 写入方式
+
+和建账号一样是**就地更新**：只替换该账号条目里的 `password:` 那一行，
+条目内其他字段和注释原样保留。写前备份 `config.yaml.bak-<时间戳>`，
+写后用 `load_config` 复核，对不上就回滚。
+
+写完会推一条 `{"type":"config_changed","fields":["password"]}`，服务端同步重载
+进程内的配置对象，否则后续操作还在用旧密码。
+
+### 内存里的处理
+
+WS 传入的凭据走账号配置对象的**副本**，不污染共享配置。原先是直接赋值，
+会让这次登录的凭据悄悄影响后续所有操作（比如「自动填账号密码」按钮），
+重启后又变回配置里的值，行为不一致且极难排查。
+
+页面上发起登录后，登录标签会显示一个「本次登录」信息条：
+
+```
+登录账号   vbk_569202
+密码       ••••••••（11 位）      ← 只显示位数，不回显内容
+凭据来源   接口传入 / 配置文件
+保存       已写回配置（password）
+```
+
+服务端在 `stage=filling` 事件回传 `login_account` 和 `credential_source`，
+`stage=success` 回传 `persisted` 和 `persisted_fields`，页面以服务端为准。
+
+> config.yaml 里是明文密码，文件权限设为 600。**别提交到 git。**
+
+## 标准测试流程
+
+按真实使用顺序把每一步走一遍，一条命令：
+
+```bash
+python -m webconsole.ws_client smoke --account-id vbk_569202
+python -m webconsole.ws_client smoke --account-id vbk_569202 --login --stop
+```
+
+不加 `--login` 时只验协议链路，不会真去登携程。实际输出：
+
+```
+  ✅ HTTP /api/accounts  模式 cdp　账号 ['A001']
+  ✅ HTTP /api/ws-spec
+  ✅ 启动浏览器  2.9s　ready=True　模式 cdp
+  ✅ 连上主通道 /ws  ws://127.0.0.1:8801/ws/A001
+  ✅ 收到画面帧  7 帧
+  ✅ 导航指令生效  新增 3 帧
+  ✅ 鼠标/滚轮被接受
+  ✅ 静止时不推帧（实时流而非轮询）  静置 3 秒新增 0 帧
+  ✅ 登录通道可连接
+  ✅ 关闭浏览器
+  通过 10/10　全部正常
+```
+
+部署完、改完选择器、或怀疑哪里不通时，先跑这个定位到具体环节。
+
+## 新账号：一条连接走完
+
+```
+ws://<console>/api/login/new          ← 账号还不存在，用 new 占位
+
+→ {"action":"create_login","name":"九龙潭商户","account":"vbk_888888",
+   "password":"pw@123","remark":"九龙潭","scenic_id":"PFTSCA01018088",
+   "persist":true,"collect_after_login":{"job":"day","years":2}}
+
+← {"stage":"creating",        "message":"正在创建账号 vbk_888888"}
+← {"stage":"account_created", "account_id":"vbk_888888"}   ← 服务端切到新账号
+← {"stage":"starting"} {"stage":"filling"} {"stage":"submitted"}
+← {"stage":"need_captcha"}    ← 同时发飞书，你去页面拖滑块
+← {"stage":"need_sms","phone":"138****8888"}
+→ {"action":"sms_code","code":"123456"}
+← {"stage":"success","persisted":true,"persisted_fields":["password"]}
+← {"stage":"collecting","label":"日数据 2024-09-08~2026-09-08"}
+```
+
+`collect_after_login` 省略或设为 null 就不自动采集。`years` 默认 2，
+换算成 `--start-date/--end-date` 传给 `ctrip.cli collect --job kylin`。
+
+**采集的逐行日志走主通道** `/ws/{account_id}`（`type=task`），
+因为登录通道在 success 后就关了。也可以查 `ads_service_ota_ctrip_run_log`。
+
+## 自动登录（WebSocket API）
+
+一条 WebSocket 跑完整个登录：接账号密码 → 自动填表 → 识别页面状态 → 需要人工就发飞书 →
+需要短信就等你回传验证码 → 自动填入提交 → 保存登录态。**登录成功或客户端断开即关闭连接。**
+
+```
+ws://<console>/api/login/{account_id}
+
+客户端 → 服务端
+  {"action":"login","account":"vbk_xxx","password":"...","timeout":600,"sms_wait":300}
+  {"action":"sms_code","code":"123456"}
+  {"action":"abort"}
+
+服务端 → 客户端
+  {"type":"login","stage":"submitted",     "message":"已提交登录，正在识别页面状态"}
+  {"type":"login","stage":"need_captcha",  "message":"需要人工验证：请拖动滑块"}
+  {"type":"notify","sent":true,"link":"http://…/?account=A001"}     ← 已发飞书
+  {"type":"login","stage":"need_sms",      "message":"已请求短信验证码","phone":"138****8888"}
+  {"type":"login","stage":"sms_filling",   "message":"已收到验证码，正在填入并提交"}
+  {"type":"login","stage":"success",       "message":"登录成功；登录态校验：…","verified":true}
+```
+
+状态机在 `login_flow.py`，跑在浏览器工作线程里，轮询期间会主动排空命令队列，
+所以随时能接住你送来的短信验证码或中止指令。
+
+几个刻意的判断顺序：
+
+- **短信优先于滑块判断**。短信页上也可能出现「安全验证」字样，只要验证码输入框存在就走短信分支。
+- **短信检测要双证据**：光有输入框不够，还需要有「获取验证码」按钮或页面文案佐证，
+  否则会把图形验证码输入框误判成短信验证。
+- **滑块和短信都会发飞书通知**。人不一定守在控制台前，短信码收不到整个流程就卡死。
+- **滑块检测既看文案也看元素**（`iframe[src*=captcha]`、`[class*=slider]` 等），
+  只靠文案会漏掉纯图形的滑块。
+- **验证消失后重置通知标记**，同一次登录里滑块反复出现能再次通知，但不会刷屏。
+- 60 秒内不重复点「获取验证码」，避免把短信额度打光。间隔基准用 `None` 而不是 `0.0`：
+  `time.monotonic()` 从开机算起，用 0 做基准会让「距上次发送超过 60 秒」在开机头一分钟里
+  恒为假，结果是服务重启后第一次登录永远不点发送按钮。
+
+**滑块不做自动破解**。那属于绕过风控，既不可靠也有合规风险。引擎只负责
+自动识别 + 通知你 + 保持会话等你操作，你点进链接拖一下即可。短信验证码则是全自动的：
+自动点发送、你回传码、自动填入并提交。
+
+选择器都在设置里可改（`selectors` 段），页面改版不用发版。
+
+## 飞书通知
+
+需人工验证时自动推送，格式就是你要的：
+
+```
+OTA需验证：
+账号:vbk_569202
+平台:携程 VBooking
+进入此链接验证:http://10.0.0.5:8800/?account=A001
+```
+
+链接带 `?account=`，点进来自动选中那个账号，直接就能拖滑块。
+
+页面上「飞书通知 → 配置」里填：
+
+| 字段 | 说明 |
+|---|---|
+| Webhook | 自定义机器人地址 |
+| 签名密钥 | 机器人安全设置开了「签名校验」才填 |
+| Token | 事件订阅的 Verification Token |
+| EncryptKey | 事件订阅开了加密才填 |
+| 控制台地址 | 通知里链接的前缀，填内网可达地址 |
+| 平台名 | 通知里「平台:」那一行 |
+
+**URL 验证**：把 `http://<console>/feishu/callback` 填进飞书「事件订阅」，
+飞书会先发 `url_verification` 要求回 `challenge`——这个端点已经处理好了，
+明文和 AES 加密（Encrypt Key）两种都支持。填了 Token 会校验，不匹配返回 403。
+
+密钥在页面上是掩码显示的，回传掩码值不会覆盖原值；`settings.json` 权限 0600。
+**这个文件含密钥，别提交到 git。**
+
+## 界面
+
+三个标签页对应真实流程顺序：**登录 → 采集 → 通知**。
+
+登录页顶部是步骤条（启动浏览器 → 填账号密码 → 安全验证 → 短信验证 → 保存登录态），
+当前卡在哪一步一眼可见。**琥珀色只表示「需要你操作」**，不用于任何装饰——
+飞书把你叫回来时，扫一眼就知道该点哪里。
+
+需要拖滑块或填验证码时，画面底部会浮出提示条，登录标签也会亮一个小点。
+短信验证码输入框只在真正需要时出现，填完自动收起。
+
+日志区可以收起，跑采集时会自动展开。
+
+## 登录期间画面照常可看可操作
+
+### 根因：screencast 是逐帧确认的
+
+`Page.startScreencast` 每推一帧都要收到 `Page.screencastFrameAck` 才推下一帧。
+最早 ack 只在 worker 主循环里发，而登录流程会长时间占用工作线程、主循环进不来 ——
+于是推流在一两帧后彻底停住。表现就是**登录期间画面定格在空表单，点「停止登录」
+后才突然跳到已填好账号密码的样子**，fps 也从 0 跳回 20。
+
+三层修复，实测帧数从 16 涨到 640、最大帧间隔从 2 秒降到 0.02 秒：
+
+| 修复 | 解决什么 |
+|---|---|
+| 帧回调里**立刻**发 ack | 单个耗时几秒的 Playwright 调用期间也不断流 |
+| `_pump` 切成 80ms 小片，每片发 ack | 兜底路径（回调内 ack 失败时）也有约 12 fps |
+| 填表与点击**拆成分步** | 每步之间插泵，你能看着它一个框一个框地填 |
+
+拆步用的是 `ctrip.auth` 里的选择器常量（`_USERNAME_SELECTORS` 等），
+**选择器仍然只有一处真源**，页面改版只需要改 `ctrip/auth.py`。
+
+
+
+登录流程跑在浏览器工作线程里，一不小心就会把画面和输入一起冻住。三处保证：
+
+**填表与点击之间插泵。** `_fill_credentials` 和 `_click_login` 各是一串阻塞调用，
+中间不插泵的话，你在这期间发的鼠标键盘事件会排队到几十秒后才被处理
+（实测日志里出现过 28 秒空白）。现在实测：用户指令 **0.1 秒**内被派发。
+
+**轮询期间每 5 秒播报当前页面。** `submitted` 之后进入状态识别，如果既没检测到
+滑块也没检测到短信，原来会一声不吭等到超时——你不知道它还活着，也不知道页面上
+是什么。现在会持续打出「识别中（已等 N s）：<页面标题> — <URL>」。
+
+**建号后主通道跟着切。** 画面帧按账号分通道，`create_login` 建完账号
+ID 就变了，前端必须重连 `/ws/{新账号}`，否则新账号的画面永远出不来。
+
+登录进行中，画面顶部会挂一条常驻提示，告诉你此刻可以直接点击拖动。
+
+## 响应速度
+
+三处让「点了没反应」消失：
+
+**导航用 `commit` 而不是 `domcontentloaded`。** commit 在服务端响应刚到、页面开始渲染时
+就返回；等 domcontentloaded 会把工作线程阻塞到整页 DOM 就绪为止，这期间事件泵停转，
+既没有帧、也接不了鼠标键盘 —— 表现就是「点完之后画面死住好几秒」。携程后台加载慢，
+这一条差别很明显。
+
+**启动接口不再死等。** `/api/browser/{id}/start` 最多同步等 6 秒（`CONSOLE_START_ACK` 可调），
+超时就先返回 `ready:false`，页面显示「浏览器启动中」，真正就绪由 WebSocket 的
+`status=live` 事件驱动。新账号首次要初始化 profile 目录，本来就慢，不该把人晾在
+一个没有任何反馈的请求里。
+
+**登录前的就绪等待放在 WebSocket 里。** 等待期间 status 事件照常回推，页面能看到进度；
+超时（`CONSOLE_LOGIN_WAIT`，默认 120 秒）会明确报错，而不是让 login_start 命令
+静静排在队列里。
+
+实测（页面首屏可渲染但有资源永远加载不完）：
+
+| 指标 | 结果 |
+|---|---|
+| start 接口返回 | 1.05s |
+| 导航后首帧 | 1.10s |
+| 整页未加载完期间 | 持续推 17 帧 |
+| 加载期间点击 | `HIT@420`、`HIT@180` 均命中 |
+| 加载期间键盘 | `TYPED:ok` |
+
+## 打开浏览器：幂等
+
+「打开浏览器」按钮任何时候都能点：
+
+- **已经开着** → 直接用，不重启、不重登（日志写「浏览器已在运行，直接使用」）
+- **没开** → 先启动再用
+- **有残留占用记录** → 自动清掉再启动（日志写「已清除过期占用记录（进程 N 已不存在）」）
+
+启动方式沿用项目原本的持久化 profile，与命令行一致。常驻浏览器（独立进程 +
+CDP 端口）默认**不开** —— 那是给多进程共享同一个浏览器用的，控制台自己持有
+worker 就够了。需要时 `CONSOLE_KEEP_ALIVE=1`（端口用 `CONSOLE_CDP_PORT`，默认 9300）。
+
+## profile 被占用怎么办
+
+占用可能来自三处，「释放 profile 占用」按钮按顺序处理：
+
+| 来源 | 处理 |
+|---|---|
+| 控制台自己的会话 | 直接断开 |
+| 常驻浏览器 | 合法占用（会被 CDP 复用），**只有强制释放才停** |
+| `session.json` 里的 `holder_pid` | 进程已不在就是过期记录，自动清；还在跑则给出确认与结束命令 |
+
+最后清理残留锁文件。整个过程每一步都会打进日志，看得到做了什么。
+
+### Windows 上的进程存活判断
+
+判断 `holder_pid` 是否还活着**不能用 `os.kill(pid, 0)`**。POSIX 上 signal 0 是
+「只探测不发信号」的惯例，**Windows 上没有信号这回事**：CPython 把 `os.kill`
+实现成 `OpenProcess` + `TerminateProcess(handle, sig)`，所以 `os.kill(pid, 0)`
+是去**终止**那个进程，权限不足时又抛 OSError 被当成「进程不存在」——
+要么误杀，要么误判成永远被占用。
+
+控制台用只读的 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` +
+`GetExitCodeProcess` 判断（见 `procutil.py`），无副作用。
+
+> `ctrip/browser.py` 里的 `_pid_alive` 仍是 `os.kill(pid, 0)`。控制台这条路已经
+> 绕开它，但 `python -m ctrip.cli browser --clear-locks` 走的还是原实现，
+> 在 Windows 上可能判不准。要一并修的话，把那个函数换成 `procutil.pid_alive` 即可。
+
+### 手动确认
+
+```powershell
+Get-Process -Id 2272        # Windows：确认进程还在不在
+taskkill /PID 2272 /F       # 确认是残留后结束它
+```
+
+```bash
+ps -p 2272                  # Linux/macOS
+kill -9 2272
+```
+
+## 技术说明
+
+**画面**是 CDP `Page.startScreencast` 推送的连续 JPEG 帧（页面有变化才推，静止时不占带宽），
+不是定时截图。**输入**通过 `Input.dispatchMouseEvent` / `dispatchKeyEvent` / `insertText`
+派发，页面收到的是真实事件，与本地操作没有区别。
+
+中文输入走隐藏 input 的 composition 事件，合成完成后用 `insertText` 一次性送入，
+所以输入法候选框在你本地弹出，不会卡在服务器端。
+
+拖动时鼠标可能移出画布（滑块常见），所以 `mouseup` 监听在 window 上而不只是 canvas。
+
+浏览器复用项目自己的 `open_session()`，也就是 `browser/{account_id}/profile` 持久化目录，
+设备指纹与 `login()` 完全一致——控制台里登录和命令行登录，对服务端是同一台设备。
+
+### 已验证
+
+在真实项目里跑通：连续帧推送、点击（坐标精确命中）、键盘输入、中文 `insertText`、
+滚轮、**按住拖动滑块到终点判定通过**、开关浏览器后 `profile_in_use()` 正确释放、
+解码真实帧确认画面非黑且内容完整、底部区域可点击。
+
+### 画面为什么可能是黑的（已修）
+
+`Page.startScreencast` **只在画面有变化时推帧**。停在 `about:blank` 这种永不变化的页面上，
+首帧之后一帧都不会来，canvas 从未被绘制过，`alpha:false` 的默认底色就是黑。
+
+三处修复：
+
+1. **关键帧**：绑定页面时、以及画面静止超过 1.2 秒时，主动 `Page.captureScreenshot` 补一帧，
+   保证前端永远有东西可画。顶栏「重取画面」按钮也走这条路。
+2. **启动即导航**：开启浏览器后若停在 `about:blank`，自动打开登录页。
+3. **前端解码不再卡死**：原来 `painting` 标志只在 `onload` 复位，一帧解码失败就永久卡住、
+   后续帧全被丢弃。现在 `onerror` 也复位，且只保留「最新待画帧」。
+
+### 视口与坐标（已修）
+
+headless 下 Playwright 把 viewport 设成 1440×1080，但浏览器窗口的合成表面只有 1440×941 ——
+页面以为自己有 1080 高，实际只有 941 会出现在帧里，**底部 139px 渲染了却看不见也点不到**。
+登录按钮落在那儿就没法用。
+
+现在启动时先用 `Browser.setWindowBounds` 撑窗口，撑不动就反过来用
+`Emulation.setDeviceMetricsOverride` 把页面视口缩到实际可视区，对齐后坐标 1:1。
+前端 canvas 尺寸也改为跟随帧的真实尺寸（`img.naturalWidth/Height`），不再用写死的
+1440×1080 去拉伸——那会让点击在垂直方向系统性偏移。顶栏显示当前真实分辨率。
+
+### 注意
+
+- **Windows 上 VNC 模式不可用**（`Xvfb`/`x11vnc` 是 X11 的东西）。硬指定
+  `CONSOLE_STREAM=vnc` 会在启动浏览器时返回 503 并说明原因，不会假装能跑。
+- **同一账号的 profile 一次只能被一个进程打开。** 控制台开着浏览器时，别同时跑
+  `python -m ctrip.cli login`，会报 `BrowserBusyError`。采集不受影响（走 requests，不开浏览器）。
+- 关闭控制台前先点「关闭浏览器」，否则 `browser/{id}/session.json` 里的 `holder_pid`
+  会残留，下次启动被自己的记录拦住。真残留了就 `python -m ctrip.cli browser --clear-locks`。
+- 画质按钮在 40/60/80 之间切。网络差就调低，看验证码细节就调高。

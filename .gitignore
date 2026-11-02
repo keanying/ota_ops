@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# 敏感与运行时产物
+.env
+config/config.yaml
+auth/
+browser/          # 浏览器 profile 里含 Cookie 与设备指纹，绝不可提交
+logs/
+data/output/
+browser
