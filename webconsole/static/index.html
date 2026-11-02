@@ -628,46 +628,67 @@
     border:1px solid rgba(255,255,255,.9);box-shadow:var(--soft-shadow)}
   .card-hd{border-bottom-color:rgba(20,30,50,.06)}
 
-  /* ---- 列表：深色面板 ---- */
-  .xt-wrap{background:var(--dark);border-radius:24px;padding:6px 6px 8px;box-shadow:0 22px 44px rgba(20,25,35,.2);
-    --ink:#F4F4F4;--ink-2:#D2D2D2;--muted:#9A9A9A;--line:#363636}
-  table.xt{color:#E9E9E9}
-  .xt th{background:var(--dark);color:#9C9C9C;border-bottom:1px solid #353535}
-  .xt td{border-top:1px solid #333}
-  .xt tbody tr:first-child td{border-top:0}
-  .xt tbody tr:hover td{background:#2D2D2D}
-  .xt .acts-col,.xt th.acts-col{background:var(--dark);box-shadow:-10px 0 14px -12px rgba(0,0,0,.8)}
-  .xt tbody tr:hover td.acts-col{background:#2D2D2D}
-  .xt .who b{color:#F7F7F7}
-  .xt .who small,.xt .when{color:#A8A8A8}
-  .xt .err{color:#FF9B9E}
-  .xt-wrap .plat{background:var(--lime);color:#161616}
-  .xt-wrap .grp-tag{background:#343434;color:#E6E6E6}
-  .xt-wrap .grp-tag.none{background:rgba(227,154,18,.18);color:#F5C35C}
-  .xt-wrap .tbl-badge{background:#343434;color:#EDEDED}
-  .xt-wrap .tag{background:#383838;color:#D8D8D8}
-  .xt-wrap .tag.ok{background:rgba(31,190,140,.18);color:#62E3B5}
-  .xt-wrap .tag.warn{background:rgba(234,170,40,.18);color:#F6C863}
-  .xt-wrap .tag.bad{background:rgba(240,90,95,.2);color:#FF9195}
-  .xt-wrap .tag.info{background:rgba(141,163,182,.25);color:#CFDDEA}
-  .xt-wrap .jchip{background:#353535;color:#D6D6D6}
-  .xt-wrap .jchip.ok{background:rgba(31,190,140,.16);color:#6DE6BB}
-  .xt-wrap .jchip.warn{background:rgba(234,170,40,.16);color:#F6C863}
-  .xt-wrap .jchip.bad{background:rgba(240,90,95,.18);color:#FF9195}
-  .xt-wrap .jchip.info{background:rgba(141,163,182,.22);color:#CFDDEA}
-  .xt-wrap .ib{color:#D4D4D4}
-  .xt-wrap .ib:hover{background:#3A3A3A}
-  .xt-wrap .ib.dark{color:#FFFFFF}
-  .xt-wrap .ib.orange{color:var(--lime)}
-  .xt-wrap .ib.orange:hover{background:rgba(217,242,74,.14)}
-  .xt-wrap .ib.red{color:#FF8E92}
-  .xt-wrap .ib.red:hover{background:rgba(240,90,95,.16)}
+  /* ---- 列表：Semi 风格表格（白底、细分隔线、头像 + 省略、圆角带图标状态标签） ---- */
+  .xt-wrap{background:#fff;border-radius:14px;border:1px solid rgba(28,31,35,.08);box-shadow:0 4px 18px rgba(28,31,35,.05);
+    --ink:#1C1F23;--ink-2:rgba(28,31,35,.8);--muted:rgba(28,31,35,.55);--line:rgba(28,31,35,.08)}
+  table.xt{font-size:14px;color:#1C1F23}
+  .xt th{background:#fff;color:rgba(28,31,35,.62);font-weight:600;font-size:14px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .xt td{padding:16px;border-top:0;border-bottom:1px solid var(--line)}
+  .xt tbody tr:last-child td{border-bottom:0}
+  .xt tbody tr:hover td{background:#F6F7F8}
+  .xt .acts-col,.xt th.acts-col{background:#fff;box-shadow:none;text-align:left}
+  .xt tbody tr:hover td.acts-col{background:#F6F7F8}
+  .xt-wrap.scrolled .acts-col{box-shadow:-8px 0 12px -10px rgba(28,31,35,.3)}
+  .xt .who b{font-weight:600;font-size:14px}
+  .xt .who small{font-family:var(--sans);font-size:12.5px}
+  .xt .when{font-family:var(--sans);font-size:14px;color:rgba(28,31,35,.8)}
+  /* 名称格：头像 + 文本，超长省略，悬停才弹完整内容 */
+  .nm{display:flex;align-items:center;gap:12px;min-width:0}
+  .nm > div{min-width:0}
+  .nm .ellip{display:block;max-width:var(--w,240px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .av{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:600;line-height:1}
+  .av.sq{border-radius:6px;width:28px;height:28px}
+  .av svg{width:16px;height:16px;stroke:#fff}
+  .av.c0{background:#A6AAAF} .av.c1{background:#F98163} .av.c2{background:#4DC1F5} .av.c3{background:#5DC264}
+  .av.c4{background:#B37FEB} .av.c5{background:#3AC3D0} .av.c6{background:#FC9C3C} .av.c7{background:#3F9BFB}
+  .tipx{position:fixed;z-index:200;max-width:420px;background:rgba(28,31,35,.92);color:#fff;font-size:12.5px;line-height:1.5;
+    padding:6px 10px;border-radius:6px;pointer-events:none;white-space:normal;word-break:break-all;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+  /* 状态标签：Semi circle tag，浅底 + 前置图标 */
+  .xt-wrap .tag{height:24px;padding:0 9px 0 8px;border-radius:999px;gap:4px;font-size:12px;font-weight:600;background:rgba(46,50,56,.05);color:rgba(28,31,35,.8)}
+  .xt-wrap .tag.ok{background:#ECF7EC;color:#3BB346}
+  .xt-wrap .tag.warn{background:#FFF8EA;color:#E58A00}
+  .xt-wrap .tag.bad{background:#FDECEF;color:#E91E63}
+  .xt-wrap .tag.info{background:#E5F7F8;color:#0B9FB5}
+  .xt-wrap .tag.ok::before,.xt-wrap .tag.warn::before,.xt-wrap .tag.bad::before,.xt-wrap .tag.st::before{content:"";width:14px;height:14px;flex:none;background:currentColor;
+    -webkit-mask:var(--ic) center/contain no-repeat;mask:var(--ic) center/contain no-repeat}
+  .xt-wrap .tag.ok{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M12 23a11 11 0 1 0 0-22 11 11 0 0 0 0 22Zm5.7-13.3a1.1 1.1 0 0 0-1.6-1.6L10.5 13.7 7.9 11.1a1.1 1.1 0 0 0-1.6 1.6l3.4 3.4c.4.4 1.2.4 1.6 0l6.4-6.4Z'/%3E%3C/svg%3E")}
+  .xt-wrap .tag.bad{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M12 23a11 11 0 1 0 0-22 11 11 0 0 0 0 22Zm-3.2-15.8a1.1 1.1 0 0 0-1.6 1.6L10.4 12l-3.2 3.2a1.1 1.1 0 1 0 1.6 1.6l3.2-3.2 3.2 3.2a1.1 1.1 0 0 0 1.6-1.6L13.6 12l3.2-3.2a1.1 1.1 0 0 0-1.6-1.6L12 10.4 8.8 7.2Z'/%3E%3C/svg%3E")}
+  .xt-wrap .tag.warn{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M12 23a11 11 0 1 0 0-22 11 11 0 0 0 0 22Zm0-17a1.3 1.3 0 0 0-1.3 1.4l.4 5.6a.9.9 0 0 0 1.8 0l.4-5.6A1.3 1.3 0 0 0 12 6Zm0 9.4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z'/%3E%3C/svg%3E")}
+  .xt-wrap .tag.st{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M12 23a11 11 0 1 0 0-22 11 11 0 0 0 0 22ZM7.5 10.9a1.1 1.1 0 0 0 0 2.2h9a1.1 1.1 0 0 0 0-2.2h-9Z'/%3E%3C/svg%3E")}
+  .xt-wrap .tag .dot{width:7px;height:7px;margin:0 3px}
+  .xt-wrap .jchip{border-radius:999px;background:rgba(46,50,56,.05);color:rgba(28,31,35,.8)}
+  .xt-wrap .jchip.ok{background:#ECF7EC;color:#2E9C3A} .xt-wrap .jchip.ok::before{background:#3BB346}
+  .xt-wrap .jchip.warn{background:#FFF8EA;color:#C97800} .xt-wrap .jchip.warn::before{background:#FC8800}
+  .xt-wrap .jchip.bad{background:#FDECEF;color:#D3175A} .xt-wrap .jchip.bad::before{background:#E91E63}
+  .xt-wrap .jchip.info{background:#E5F7F8;color:#0B8FA3} .xt-wrap .jchip.info::before{background:#0B9FB5}
+  .xt-wrap .grp-tag{background:rgba(46,50,56,.05);color:rgba(28,31,35,.8);border-radius:6px;font-size:13px}
+  .xt-wrap .grp-tag.none{background:#FFF8EA;color:#C97800}
+  /* 操作：borderless 图标按钮 */
+  .xt-wrap .ib{width:32px;height:32px;border-radius:6px;color:rgba(28,31,35,.62)}
+  .xt-wrap .ib svg{width:17px;height:17px}
+  .xt-wrap .ib:hover{background:rgba(46,50,56,.09);color:#1C1F23}
+  .xt-wrap .ib.dark{color:#1C1F23}
+  .xt-wrap .ib.orange{color:#5C6E00} .xt-wrap .ib.orange:hover{background:#F4FAD6}
+  .xt-wrap .ib.red{color:#E91E63} .xt-wrap .ib.red:hover{background:#FDECEF}
   .xt-wrap .ib.solid svg{background:var(--lime);stroke:#161616;color:#161616}
-  .xt-wrap .switch span{background:#4A4A4A}
-  .xt-wrap .switch input:checked + span{background:var(--lime)}
-  .xt-wrap .switch input:checked + span::after{background:#161616}
-  .xt-wrap .dot{background:#5A5A5A}
-  .xt-wrap .dot.ok{background:#3FD69E} .xt-wrap .dot.info{background:var(--lime)}
+  .xt-wrap .ib:disabled{opacity:.28}
+  .xt-wrap .switch input:checked + span{background:#1C1F23}
+  .xt-wrap .switch input:checked + span::after{background:var(--lime)}
+  .xt .err{font-size:12.5px;color:#E91E63}
+  /* 空状态：插画 + 说明 */
+  .xt td.empty-cell{padding:44px 0 40px;text-align:center;white-space:normal;color:rgba(28,31,35,.62);font-size:14px}
+  .xt td.empty-cell:hover,.xt tr:hover td.empty-cell{background:#fff}
+  .empty-cell svg{display:block;margin:0 auto 12px;width:150px;height:110px}
 
   /* ---- 总览统计：浅色玻璃卡 ---- */
   .hero{background:rgba(255,255,255,.66);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.95);
@@ -866,7 +887,7 @@
         </div>
         <div class="xt-wrap">
           <table class="xt">
-            <thead><tr><th>平台</th><th>账号标识</th><th>景区</th><th>浏览器</th><th>登录态</th><th>当前任务</th>
+            <thead><tr><th>账号</th><th>景区</th><th>浏览器</th><th>登录态</th><th>当前任务</th>
               <th>登录态更新于</th><th>最近检测</th><th class="acts-col">操作</th></tr></thead>
             <tbody id="acctRows"></tbody>
           </table>
@@ -979,7 +1000,7 @@
         </div>
         <div class="xt-wrap">
           <table class="xt">
-            <thead><tr><th>表</th><th>本地表 → 下游表</th><th>类型</th><th>推送字段</th><th>pkId</th><th>回溯</th><th>参与同步</th>
+            <thead><tr><th>表（本地 → 下游）</th><th>类型</th><th>推送字段</th><th>pkId</th><th>回溯</th><th>参与同步</th>
               <th class="acts-col">操作</th></tr></thead>
             <tbody id="syTables"></tbody>
           </table>
@@ -1372,7 +1393,17 @@ const acctName = (id) => { const a = accounts.find(x => x.account_id === id); re
 
 const IB = (act, icon, title, cls = "", dis = false) =>
   `<button class="ib ${cls}" data-act="${act}" title="${title}" aria-label="${title}" ${dis ? "disabled" : ""}><svg class="i"><use href="#i-${icon}"/></svg></button>`;
-const EMPTY_ROW = (n, text) => `<tr><td colspan="${n}" style="text-align:center;padding:40px 0;color:var(--muted);white-space:normal">${text}</td></tr>`;
+const EMPTY_ART = `<svg viewBox="0 0 150 110" aria-hidden="true"><ellipse cx="75" cy="98" rx="52" ry="7" fill="#EEF0F3"/>
+  <rect x="38" y="16" width="62" height="78" rx="8" fill="#F4F6F9" stroke="#DCE0E6" stroke-width="2"/>
+  <rect x="49" y="30" width="34" height="5" rx="2.5" fill="#DCE0E6"/><rect x="49" y="42" width="40" height="5" rx="2.5" fill="#E6E9EE"/>
+  <rect x="49" y="54" width="26" height="5" rx="2.5" fill="#E6E9EE"/>
+  <circle cx="96" cy="64" r="17" fill="#fff" stroke="#1C1F23" stroke-width="4"/><circle cx="96" cy="64" r="9" fill="#D9F24A"/>
+  <path d="M108 77l13 13" stroke="#1C1F23" stroke-width="6" stroke-linecap="round"/></svg>`;
+const EMPTY_ROW = (n, text) => `<tr><td colspan="${n}" class="empty-cell">${EMPTY_ART}${text}</td></tr>`;
+/* 头像：按名字固定取色（Semi Avatar 的几种色），圆形取首字，方形放图标 */
+const avColor = (k) => { let h = 2166136261; for (const c of String(k || "")) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0; return "c" + (h % 8); };
+const avatar = (name, key) => `<span class="av ${avColor(key || name)}">${esc(String(name || "?").trim().slice(0, 1).toUpperCase())}</span>`;
+const sqIcon = (icon, cls) => `<span class="av sq ${cls}"><svg class="i"><use href="#i-${icon}"/></svg></span>`;
 
 /* 通用：可展开行。点行展开 / 收起，开着的行在刷新后保持展开 */
 function bindRows(boxId, onOpen){
@@ -1520,12 +1551,12 @@ function renderAccounts(){
     `<button class="ib ${cls}" data-act="${act}" title="${title}" aria-label="${title}" ${dis ? "disabled" : ""}><svg class="i"><use href="#i-${icon}"/></svg></button>`;
   $("acctRows").innerHTML = list.length ? list.map(a => `
     <tr data-id="${esc(a.account_id)}">
-      <td><span class="plat">携程</span></td>
-      <td class="who"><b>${esc(a.name || a.remark || a.account || a.account_id)}</b>
-        <small>${esc(a.account || "（未配置登录账号）")}${a.account_id !== a.account ? ` · ${esc(a.account_id)}` : ""}</small></td>
+      <td class="who"><div class="nm">${avatar(a.name || a.remark || a.account || a.account_id, a.account_id)}<div>
+        <b class="ellip" style="--w:220px">${esc(a.name || a.remark || a.account || a.account_id)}</b>
+        <small class="ellip" style="--w:220px">携程 · ${esc(a.account || "未配置登录账号")}${a.account_id !== a.account ? ` · ${esc(a.account_id)}` : ""}</small></div></div></td>
       <td>${a.scenic_id ? `<span class="grp-tag">${esc(a.scenic_id)}</span>` : '<span class="grp-tag none">未绑定</span>'}</td>
       <td>${a.browser === "live" ? '<span class="dot ok beat"></span> 在线' : '<span class="dot"></span> <span class="muted">关闭</span>'}</td>
-      <td><span class="tag ${stateCls(a)}">${a.is_fresh ? "正常" : stateOf(a)}</span>${a.status === "disabled" ? ' <span class="tag">停用</span>' : ""}</td>
+      <td><span class="tag ${stateCls(a)}">${a.is_fresh ? "正常" : stateOf(a)}</span>${a.status === "disabled" ? ' <span class="tag st">停用</span>' : ""}</td>
       <td>${a.task ? `<a href="#" data-act="log" data-run="${esc(a.task_run_id)}" class="tag info" style="text-decoration:none"><span class="dot info beat"></span>采集中</a>` : '<span class="muted">—</span>'}</td>
       <td class="when">${ts(a.login_at)}</td>
       <td class="when">${ts(a.last_check_at)}</td>
@@ -1539,7 +1570,7 @@ function renderAccounts(){
         ${ib("del", "trash", "删除", "red")}
       </span></td>
     </tr>`).join("")
-    : `<tr><td colspan="9" style="text-align:center;padding:40px 0;color:var(--muted)">${accounts.length ? "没有符合条件的账号" : "还没有账号，点右上角「新增账号」"}</td></tr>`;
+    : EMPTY_ROW(8, accounts.length ? "搜索无结果" : "还没有账号，点右上角「新增账号」");
 }
 $("acctSearch").addEventListener("input", renderAccounts);
 $("acctRows").addEventListener("click", (e) => {
@@ -2117,13 +2148,15 @@ function renderRuns(){
   $("runRows").innerHTML = shown.length ? shown.map(r => `
     <tr class="clickable" data-id="${esc(r.run_id)}" title="点击查看日志">
       <td class="when">${esc(r.created_at.slice(5, 16))}</td>
-      <td class="who"><b>${esc(acctName(r.account_id))}</b><small>${esc(r.account_id)}</small></td>
-      <td class="wrap"><b style="font-weight:600;color:var(--ink)">${esc(r.label)}</b>${jobChips(r)}
+      <td class="who"><div class="nm">${avatar(acctName(r.account_id), r.account_id)}<div>
+        <b class="ellip" style="--w:150px">${esc(acctName(r.account_id))}</b><small class="ellip" style="--w:150px">${esc(r.account_id)}</small></div></div></td>
+      <td class="wrap"><div class="nm" style="align-items:flex-start">${sqIcon(r.mode === "day" ? "list" : r.mode === "month" ? "pie" : "grid", r.mode === "day" ? "c7" : r.mode === "month" ? "c4" : "c5")}<div style="min-width:0">
+        <b class="ellip" style="--w:460px;font-weight:600;color:var(--ink)">${esc(r.label)}</b>${jobChips(r)}</div></div>
         ${r.detail && ["failed","skipped","stopped"].includes(r.status) ? `<div class="err">${esc(r.detail)}</div>` : ""}</td>
       <td>${esc(SRC[r.source] || r.source)}</td>
       <td class="when">${esc((r.started_at || "—").slice(5, 19))}</td>
       <td class="when">${fmtDur(r.duration)}</td>
-      <td><span class="tag ${RUN_CLS[r.status] || ""}">${r.status === "running" ? '<span class="dot info beat"></span>' : ""}${esc(r.status_text)}</span></td>
+      <td><span class="tag ${RUN_CLS[r.status] || "st"}">${r.status === "running" ? '<span class="dot info beat"></span>' : ""}${esc(r.status_text)}</span></td>
       <td class="acts-col"><span class="ibtns">
         ${IB("log", "eye", "查看日志", "dark", !r.has_log)}
         ${IB("rerun", "redo", "按原参数重跑", "", !canRerun(r))}
@@ -2517,7 +2550,8 @@ function renderSyncJobs(){
     return `
     <tr class="clickable" data-id="${esc(j.id)}" title="点击查看推送日志">
       <td class="when">${esc(j.created_at.slice(5, 16))}</td>
-      <td class="wrap"><b style="font-weight:600;color:var(--ink)">${esc(j.label)}</b>${j.dry_run ? ' <span class="tag">试运行</span>' : ""}</td>
+      <td class="wrap"><div class="nm">${sqIcon(j.dry_run ? "flask" : "up", j.dry_run ? "c0" : "c3")}<div>
+        <b class="ellip" style="--w:300px;font-weight:600;color:var(--ink)">${esc(j.label)}</b>${j.dry_run ? '<small class="muted">试运行，未推送</small>' : ""}</div></div></td>
       <td>${esc(SYNC_REASON[j.reason] || j.reason)}</td>
       <td class="wrap"><span class="jchips">${tables || (j.status === "running" ? '<span class="jchip info">推送中…</span>' : '<span class="muted">—</span>')}</span>
         ${errs.length ? `<div class="err">${esc(errs[0])}</div>` : ""}</td>
@@ -2628,9 +2662,9 @@ function renderSyncTables(){
     const miss = t.pk.filter(p => !t.fields.includes(p));
     return `
     <tr data-id="${esc(key)}">
-      <td><span class="tbl-badge">${TBL_LABEL[key] || key}</span></td>
-      <td class="who"><b class="mono" style="font-size:13px">${esc(meta.name)}</b><small>→ ${esc(t.remote_table || meta.name)}</small></td>
-      <td><span class="tag info">${daily ? "日表" : "月表"}</span></td>
+      <td class="who"><div class="nm">${sqIcon(daily ? "list" : "pie", daily ? "c7" : "c4")}<div>
+        <b>${TBL_LABEL[key] || key}</b><small class="ellip mono" style="--w:340px;font-size:12px">${esc(meta.name)} → ${esc(t.remote_table || meta.name)}</small></div></div></td>
+      <td><span class="tag ${daily ? "info" : "st"}" style="${daily ? "" : "background:#F3EDFB;color:#8E55D9"}">${daily ? "日表" : "月表"}</span></td>
       <td><b style="color:var(--ink)">${t.fields.length}</b> <span class="muted">/ ${total}</span>
         ${!t.configured ? '<div class="err" style="color:#B26A00">未选过，默认不推记账字段</div>' : ""}</td>
       <td class="wrap mono" style="font-size:12px">${esc(t.pk.join(", ") || "—")}
@@ -2644,7 +2678,7 @@ function renderSyncTables(){
       </span></td>
     </tr>`;
   });
-  $("syTables").innerHTML = rows.join("") || EMPTY_ROW(8, "没有可同步的表");
+  $("syTables").innerHTML = rows.join("") || EMPTY_ROW(7, "没有可同步的表");
 }
 $("syTables").addEventListener("change", (e) => {
   if (e.target.dataset.f !== "on") return;
@@ -3048,6 +3082,27 @@ loadAccounts().then(() => {
   showRoute(want ? "accounts" : (location.hash.replace(/^#\//, "") || "overview"));
   if (want && accounts.some(a => a.account_id === want)) openBrowser(want);
 }).catch(e => toast("加载失败：" + e.message));
+})();
+
+/* 超长文本悬停提示（只在真的被截断时出现） */
+(() => {
+  let tip = null;
+  const hide = () => { if (tip){ tip.remove(); tip = null; } };
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest && e.target.closest(".ellip");
+    if (!el || el.scrollWidth <= el.clientWidth + 1){ hide(); return; }
+    if (tip && tip.dataset.for === el.textContent) return;
+    hide(); tip = document.createElement("div"); tip.className = "tipx"; tip.textContent = el.textContent.trim(); tip.dataset.for = el.textContent;
+    document.body.appendChild(tip);
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth;
+    tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px";
+    tip.style.top = (r.top - tip.offsetHeight - 8 < 8 ? r.bottom + 8 : r.top - tip.offsetHeight - 8) + "px";
+  });
+  document.addEventListener("scroll", hide, true);
+  document.querySelectorAll(".xt-wrap").forEach(w => {
+    const f = () => w.classList.toggle("scrolled", w.scrollWidth - w.clientWidth - w.scrollLeft > 2);
+    w.addEventListener("scroll", f); new ResizeObserver(f).observe(w); new MutationObserver(f).observe(w, {childList: true, subtree: true});
+  });
 })();
 </script>
 </body>
