@@ -392,7 +392,6 @@ def build_api(cfg: AppConfig, account_id: str, log: logging.Logger):
         origin="https://vbooking.ctrip.com",
         referer="https://vbooking.ctrip.com/",
         account_id=account_id,
-        proxy=getattr(cfg.ctrip, "proxy", "auto"),
     )
     return CtripApi(
         session,

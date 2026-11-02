@@ -74,20 +74,8 @@ class BrowserBusyError(RuntimeError):
     """同一 profile 已被另一个进程占用。"""
 
 
-def _proxy_args(cfg: AppConfig) -> list[str]:
-    """浏览器的代理参数，与接口请求用同一个决定（见 session.resolve_proxy）。
-
-    Chromium 默认也读系统代理：系统代理指向一个没开的端口时，
-    接口改直连了而浏览器还在撞死端口，登录页根本打不开。
-    """
-    from .session import resolve_proxy
-
-    plan = resolve_proxy(getattr(cfg.ctrip, "proxy", "auto"))
-    if plan.kind == "direct":
-        return ["--no-proxy-server"]
-    if plan.kind == "explicit":
-        return [f"--proxy-server={plan.url}"]
-    return []
+# 浏览器同样一律直连：Chromium 默认也读系统代理，代理软件没开时登录页根本打不开
+_NO_PROXY_ARGS = ["--no-proxy-server"]
 
 
 def _busy_message(cfg: AppConfig, account_id: str, detail: str) -> str:
@@ -573,7 +561,7 @@ def open_session(cfg: AppConfig, account_id: str, *,
             "user_data_dir": str(profile_dir),
             "headless": headless,
             "slow_mo": cfg.ctrip.slow_mo,
-            "args": list(_LAUNCH_ARGS) + _proxy_args(cfg),
+            "args": list(_LAUNCH_ARGS) + _NO_PROXY_ARGS,
             # 强制用完整 Chromium（--headless=new）而非精简的 chrome-headless-shell。
             # 实测：headless-shell 不写 Preferences / Login Data / History /
             # Service Worker，也不写 SingletonLock，持久化不完整；
@@ -617,7 +605,7 @@ def open_session(cfg: AppConfig, account_id: str, *,
     log.warning("[%s] 持久化浏览器已关闭，使用临时 profile（每次登录都可能触发验证）", account_id)
     p = sync_playwright().start()
     browser = p.chromium.launch(headless=headless, slow_mo=cfg.ctrip.slow_mo,
-                                args=list(_LAUNCH_ARGS) + _proxy_args(cfg))
+                                args=list(_LAUNCH_ARGS) + _NO_PROXY_ARGS)
     context = browser.new_context(**_context_kwargs(cfg))
     context.add_init_script(STEALTH_JS)
     context.set_default_timeout(cfg.ctrip.nav_timeout * 1000)
@@ -671,7 +659,7 @@ def _spawn_keep_alive(cfg: AppConfig, account_id: str, port: int, *,
         "--lang=zh-CN",
         "--accept-lang=zh-CN,zh",
         *_LAUNCH_ARGS,
-        *_proxy_args(cfg),
+        *_NO_PROXY_ARGS,
     ]
     if headless:
         cmd.append("--headless=new")

@@ -39,10 +39,6 @@ class NetworkError(ApiError):
 
 
 def _network_hint(exc: Exception) -> str:
-    text = str(exc)
-    if "ProxyError" in text or "proxy" in text.lower():
-        return ("连不上代理服务器。系统或环境变量里配置了代理（如 Clash / v2ray 的 127.0.0.1 端口），"
-                "但代理程序没在运行。打开代理程序，或在 config.yaml 的 ctrip.proxy 设为 none 直连")
     if isinstance(exc, requests.Timeout):
         return "请求超时，检查本机网络"
     return "网络不通，检查本机网络 / DNS"
@@ -94,10 +90,6 @@ class CtripApi:
                 raise
             except (requests.RequestException, json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
-                if isinstance(exc, requests.exceptions.ProxyError):
-                    # 代理连不上，重试几次结果都一样，别再干等指数退避
-                    raise NetworkError(f"[{self.account_id}] 接口 {endpoint}：{_network_hint(exc)}"
-                                       f"（{exc}）") from exc
                 self.log.warning("[%s] %s 请求异常（第 %d/%d 次）：%s",
                                  self.account_id, endpoint, attempt, self.max_retries, exc)
             else:

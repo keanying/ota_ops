@@ -16,12 +16,7 @@ from __future__ import annotations
 
 import json
 import os
-import socket
-import threading
-import time
-from dataclasses import dataclass
 from http.cookiejar import Cookie
-from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
 
@@ -41,108 +36,19 @@ class SessionError(RuntimeError):
     """会话构建失败。"""
 
 
-# =============================================================================
-# 代理
-# =============================================================================
+def use_direct_connection(session: requests.Session) -> None:
+    """一律直连，不读系统 / 环境变量里的代理。
 
-CTRIP_PROBE_URL = "https://vbooking.ctrip.com/"
-
-
-@dataclass(frozen=True)
-class ProxyPlan:
-    """这次访问携程走什么路。接口请求与浏览器用同一个决定，避免一边通一边不通。
-
-    kind: system（交给系统/环境变量）| direct（直连）| explicit（指定代理 url）
+    本项目访问携程、推送下游都不需要代理。但 requests 默认会读系统代理
+    （Windows 注册表里的那个）：电脑上装过 Clash / v2ray 之类的软件，
+    它没开时系统代理设置还在，所有请求就会撞到 127.0.0.1:xxxx 上被拒绝。
     """
-    kind: str
-    url: str = ""
-    note: str = ""
-
-
-# 探测结果短时缓存。不能永久缓存：控制台是常驻进程，代理程序随时可能被开 / 关，
-# 永久缓存的话「第一次推送时代理开着、后来关了」就会一直撞死端口。
-PROBE_TTL = 30.0
-_plan_cache: dict[str, tuple[float, ProxyPlan]] = {}
-_last_note: dict[str, str] = {}
-_plan_lock = threading.Lock()
-
-
-def _system_proxy_for(url: str) -> str:
-    """系统/环境变量里给这个地址配的代理（Windows 上含注册表里的系统代理）。"""
-    proxies = requests.utils.get_environ_proxies(url) or {}
-    scheme = urlparse(url).scheme or "https"
-    return proxies.get(scheme) or proxies.get("all") or ""
-
-
-def _reachable(proxy_url: str, timeout: float = 1.5) -> bool:
-    parsed = urlparse(proxy_url if "://" in proxy_url else f"http://{proxy_url}")
-    host = parsed.hostname or ""
-    port = parsed.port or (443 if parsed.scheme == "https" else 1080 if parsed.scheme.startswith("socks") else 80)
-    if not host:
-        return False
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL,
-                  log=None) -> ProxyPlan:
-    """按配置决定访问 ``url`` 走什么代理（默认是携程；推送下游时传下游地址）。
-
-    auto 的探测结果按目标主机缓存 ``PROBE_TTL`` 秒，过期重新探测；
-    情况变化（代理从通到不通或反过来）时才告警一次，不刷屏。
-    """
-    mode = (mode or "auto").strip()
-    key = mode.lower()
-    if key in ("none", "direct", "off", "false", "no"):
-        return ProxyPlan("direct", note="已配置直连（ctrip.proxy=none）")
-    if "://" in mode:
-        return ProxyPlan("explicit", mode, f"使用指定代理 {mode}")
-    if key == "system":
-        return ProxyPlan("system", _system_proxy_for(url), "跟随系统代理")
-
-    cache_key = urlparse(url).hostname or url
-    with _plan_lock:
-        hit = _plan_cache.get(cache_key)
-        if hit and time.monotonic() - hit[0] < PROBE_TTL:
-            return hit[1]
-        sys_proxy = _system_proxy_for(url)
-        if not sys_proxy:
-            plan = ProxyPlan("system", note="系统未配置代理，直连")
-        elif _reachable(sys_proxy):
-            plan = ProxyPlan("system", sys_proxy, f"使用系统代理 {sys_proxy}")
-        else:
-            plan = ProxyPlan("direct", sys_proxy,
-                             f"系统代理 {sys_proxy} 连不上（代理程序没开？），已改为直连。"
-                             "确实需要代理请先打开代理程序；想固定直连可在 config.yaml 设 ctrip.proxy: none")
-        if _last_note.get(cache_key) != plan.note:
-            _last_note[cache_key] = plan.note
-            if plan.kind == "direct":
-                (log or logger).warning(plan.note)
-            elif sys_proxy:
-                (log or logger).info(plan.note)
-        _plan_cache[cache_key] = (time.monotonic(), plan)
-        return plan
-
-
-def apply_proxy(session: requests.Session, plan: ProxyPlan) -> None:
-    """把代理决定落到 Session 上。
-
-    注意 requests 的合并顺序：``trust_env=True`` 时环境/系统代理会**覆盖**
-    ``session.proxies``，所以直连和指定代理都必须关掉 trust_env。
-    """
-    # 一律按探测结果「钉死」，不再让 requests 自己去读系统代理：
-    # 避免探测时是一种情况、真正发请求时又读到另一种
     session.trust_env = False
     session.proxies.clear()
     # trust_env=False 会连带忽略 REQUESTS_CA_BUNDLE（自定义根证书），这里手动保留
     ca = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("CURL_CA_BUNDLE")
     if ca:
         session.verify = ca
-    if plan.kind in ("explicit", "system") and plan.url:
-        session.proxies.update({"http": plan.url, "https": plan.url})
 
 
 def _make_cookie(name: str, value: str, domain: str, path: str,
@@ -192,8 +98,7 @@ def load_storage_state(cookie_file: str | Path) -> dict[str, Any]:
 def build_session(cookie_file: str | Path, *, user_agent: str = DEFAULT_UA,
                   origin: str = "https://vbooking.ctrip.com",
                   referer: str = "https://vbooking.ctrip.com/",
-                  account_id: str = "-",
-                  proxy: str = "auto") -> requests.Session:
+                  account_id: str = "-") -> requests.Session:
     """从 storage_state 构建带完整请求头的 Session。"""
     data = load_storage_state(cookie_file)
     cookies = data.get("cookies") or []
@@ -201,7 +106,7 @@ def build_session(cookie_file: str | Path, *, user_agent: str = DEFAULT_UA,
         raise SessionError(f"登录态文件中没有任何 Cookie: {cookie_file}")
 
     session = requests.Session()
-    apply_proxy(session, resolve_proxy(proxy))
+    use_direct_connection(session)
     for c in cookies:
         name, value = c.get("name"), c.get("value")
         if not name or value is None:
