@@ -97,8 +97,6 @@ class SyncConfig:
     timeout: int = 30
     retries: int = 2
     after_collect: bool = True   # 采集完成后立刻推一次（与定时互不影响）
-    # 访问下游用的代理，语义同 ctrip.proxy：auto（系统代理连不上就直连）| system | none | http://host:port
-    proxy: str = "auto"
     tables: dict = field(default_factory=dict)      # table_key -> TableSync
     schedule: Schedule = field(default_factory=Schedule)
 
@@ -127,9 +125,8 @@ class SyncConfig:
             extra_headers=dict(raw.get("extra_headers") or {}),
             batch_size=max(1, int(raw.get("batch_size") or 200)),
             timeout=int(raw.get("timeout") or 30),
-            retries=int(raw.get("retries") or 2),
+            retries=max(0, int(raw.get("retries", 2) if raw.get("retries") is not None else 2)),
             after_collect=bool(raw.get("after_collect", True)),
-            proxy=(raw.get("proxy") or "auto").strip() or "auto",
             tables=tables,
             schedule=Schedule(
                 daily_enabled=bool(sc.get("daily_enabled", False)),
@@ -308,46 +305,25 @@ class SyncError(RuntimeError):
     pass
 
 
-def _opener(sc: SyncConfig, emit=None):
-    """按代理配置建 urllib opener。
-
-    urllib 默认会读系统代理（Windows 注册表里的那个）。本机代理软件没开时，
-    所有推送都会撞在 127.0.0.1:xxxx 上，报「目标计算机积极拒绝」——
-    看起来像下游挂了，其实是代理没开。auto 模式下这种情况自动改直连。
-    """
-    from ctrip.session import resolve_proxy
-
-    plan = resolve_proxy(sc.proxy, url=sc.url, log=logger)
-    if plan.kind == "direct":
-        handler = urllib.request.ProxyHandler({})
-    elif plan.kind == "explicit":
-        handler = urllib.request.ProxyHandler({"http": plan.url, "https": plan.url})
-    else:
-        handler = urllib.request.ProxyHandler()      # 系统 / 环境变量代理
-    if emit:
-        if plan.kind == "direct" and plan.url:
-            emit("warn", plan.note)                      # 系统代理连不上，已改直连
-        else:
-            emit("info", f"网络：{plan.note or '直连'}")
-    return urllib.request.build_opener(handler), plan
+# 推送只是调下游 API，一律直连，不走任何代理。
+# urllib 默认会读系统代理（Windows 注册表里那个）：本机代理软件没开时，
+# 推送会撞在 127.0.0.1:xxxx 上报「目标计算机积极拒绝」，看起来像下游挂了。
+# 所以这里显式给一个空的 ProxyHandler，彻底不读系统代理。
+_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
-def _url_error_text(exc: Exception, plan) -> str:
+def _url_error_text(exc: Exception) -> str:
     text = str(getattr(exc, "reason", exc))
-    refused = "10061" in text or "Connection refused" in text or "积极拒绝" in text
-    if refused and plan is not None and plan.kind in ("system", "explicit") and plan.url:
-        return (f"连不上代理 {plan.url}（{text}）。代理程序没开？"
-                "打开代理程序，或在下游接口的「代理」里填 none 直连")
-    if refused:
-        return f"下游拒绝连接（{text}），检查地址和端口、下游服务是否在运行"
+    if "10061" in text or "Connection refused" in text or "积极拒绝" in text:
+        return f"下游拒绝连接（{text}），检查下游地址和端口是否正确、下游服务是否在运行"
+    if "getaddrinfo" in text or "Name or service not known" in text or "11001" in text:
+        return f"解析不了下游域名（{text}），检查地址拼写和本机 DNS"
     return text
 
 
 def post_batch(sc: SyncConfig, table_name: str, pk: list[str],
-               rows: list[dict], emit=None, opener=None, plan=None) -> dict:
+               rows: list[dict], emit=None) -> dict:
     """推一批。只用标准库，少一个依赖少一份装不上的风险。"""
-    if opener is None:
-        opener, plan = _opener(sc)
     payload = json.dumps({"tableName": table_name, "pkId": pk, "data": rows},
                          ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json", **(sc.extra_headers or {})}
@@ -359,7 +335,7 @@ def post_batch(sc: SyncConfig, table_name: str, pk: list[str],
         req = urllib.request.Request(sc.url, data=payload, headers=headers,
                                      method="POST")
         try:
-            with opener.open(req, timeout=sc.timeout) as resp:
+            with _DIRECT.open(req, timeout=sc.timeout) as resp:
                 body = resp.read().decode("utf-8", "replace")
             data = json.loads(body) if body else {}
             # 下游约定 code=0 / status=true 为成功
@@ -372,7 +348,7 @@ def post_batch(sc: SyncConfig, table_name: str, pk: list[str],
             if 400 <= exc.code < 500:
                 break        # 报文或鉴权错，重试多少次都一样
         except urllib.error.URLError as exc:
-            last = SyncError(_url_error_text(exc, plan))
+            last = SyncError(_url_error_text(exc))
         except (TimeoutError, json.JSONDecodeError, SyncError) as exc:
             last = exc if isinstance(exc, SyncError) else SyncError(
                 "请求超时" if isinstance(exc, TimeoutError) else f"下游返回的不是 JSON：{exc}")
@@ -431,10 +407,8 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
     if not _running.acquire(blocking=False):
         raise SyncError("已有同步任务在跑，稍后再试")
     try:
-        opener, plan = (None, None)
         if not dry_run:
-            emit(f"下游：{sc.url}（每批 {sc.batch_size} 行，失败重试 {sc.retries} 次）")
-            opener, plan = _opener(sc, lambda lv, m: emit(m, lv))
+            emit(f"下游：{sc.url}（直连，每批 {sc.batch_size} 行，失败重试 {sc.retries} 次）")
         for key in keys:
             ts = sc.tables.get(key)
             if isinstance(ts, dict):
@@ -481,8 +455,7 @@ def run_sync(cfg, sc: SyncConfig, job: str = "daily",
                 for i in range(0, len(rows), sc.batch_size):
                     chunk = rows[i:i + sc.batch_size]
                     data = post_batch(sc, remote, pk, chunk,
-                                      emit=lambda lv, m: emit(m, lv),
-                                      opener=opener, plan=plan)
+                                      emit=lambda lv, m: emit(m, lv))
                     item["batches"] += 1
                     ins, upd = int(data.get("inserted") or 0), int(data.get("updated") or 0)
                     item["inserted"] += ins

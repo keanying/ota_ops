@@ -227,6 +227,10 @@
   .chip{border:1px solid var(--edge-hi);border-radius:12px;padding:2px 10px;font:12px var(--mono);
     cursor:pointer;color:var(--muted);background:none}
   .chip[aria-pressed="true"]{border-color:var(--signal);color:var(--signal);background:rgba(240,169,59,.08)}
+  .chips.cols .chip{display:inline-flex;align-items:baseline;gap:5px;text-decoration:line-through;opacity:.6}
+  .chips.cols .chip small{font:11px var(--sans);color:inherit;opacity:.8}
+  .chips.cols .chip[aria-pressed="true"]{border-color:var(--ok);color:var(--ok);background:rgba(70,179,154,.1);
+    text-decoration:none;opacity:1}
   .ftbl td,.ftbl th{padding:6px 10px}
   .ftbl input.inp{padding:4px 8px;font-size:12px;width:100%}
   .ftbl tr.off td{opacity:.45}
@@ -415,15 +419,7 @@
             <div class="field"><label>Key 头名</label><input id="syHeader" placeholder="xpftkey"></div>
             <div class="field"><label>Key</label><input id="syKey" type="password" placeholder="pfk_…"></div>
             <div class="field"><label>每批行数</label><input class="num" id="syBatch" type="number" min="1" max="2000" value="200"></div>
-            <div class="field"><label>代理</label>
-              <select id="syProxyMode">
-                <option value="auto">自动（系统代理连不上就直连）</option>
-                <option value="none">直连，不走代理</option>
-                <option value="system">跟随系统代理</option>
-                <option value="custom">指定代理…</option>
-              </select></div>
-            <div class="field" id="syProxyRow" style="display:none"><label></label>
-              <input id="syProxyUrl" placeholder="http://127.0.0.1:7890"></div>
+
           </div>
         </div>
 
@@ -1753,10 +1749,6 @@ async function loadSync(){
   $("syHeader").value = d.header_name || "xpftkey";
   $("syKey").value = d.key || "";
   $("syBatch").value = d.batch_size || 200;
-  const px = d.proxy || "auto";
-  $("syProxyMode").value = ["auto","none","system"].includes(px) ? px : "custom";
-  $("syProxyUrl").value = ["auto","none","system"].includes(px) ? "" : px;
-  $("syProxyRow").style.display = $("syProxyMode").value === "custom" ? "" : "none";
   $("syAfter").checked = d.after_collect !== false;
   const sc = d.schedule || {};
   $("syDaily").checked = !!sc.daily_enabled;
@@ -1776,19 +1768,22 @@ function renderSyncTables(){
   for (const [key, meta] of Object.entries(d.tables_meta || {})){
     const t = (d.tables || {})[key] || {};
     const cols = meta.columns || [];
-    const chosen = new Set((t.fields && t.fields.length) ? t.fields : cols.map(c => c.name));
+    const configured = !!(t.fields && t.fields.length);
+    // 没单独配置过的表，后端现在会推全部字段；这里如实显示，并提示去选
+    const chosen = new Set(configured ? t.fields : cols.map(c => c.name));
     const aliases = t.aliases || {};
     const pk = new Set(t.pk && t.pk.length ? t.pk : (d.default_pk[key] || []));
     const daily = meta.period === "daily";
     const card = document.createElement("div");
     card.className = "card tcard"; card.dataset.key = key;
+    card.dataset.configured = configured ? "1" : "";
     card.innerHTML = `
       <div class="card-hd">
-        <label class="check" style="margin:0"><input type="checkbox" data-f="on" ${t.enabled !== false ? "checked" : ""}></label>
+        <label class="check" style="margin:0" title="参与「立即推送全部」和定时补推"><input type="checkbox" data-f="on" ${t.enabled !== false ? "checked" : ""}></label>
         <h2 class="mono">${esc(meta.name)}</h2>
         <span class="tag info">${daily ? "日表" : "月表"}</span>
         <small>${esc(meta.comment)}</small>
-        <div class="acts"><small data-f="count"></small>
+        <div class="acts">
           <button class="btn btn--sm" data-f="dry1">试运行</button>
           <button class="btn btn--sm btn--go" data-f="push1">立即推送</button></div>
       </div>
@@ -1797,26 +1792,38 @@ function renderSyncTables(){
           <input data-f="rt" placeholder="${esc(meta.name)}（留空用本地表名）" value="${esc(t.remote_table || "")}"></div>
         <div class="field"><label>回溯</label>
           <input class="num" data-f="lb" type="number" min="1" max="120" value="${t.lookback || (daily ? 7 : 2)}">
-          <span class="unit">${daily ? "天，按 transaction_date，到昨天为止" : "个月，按 evaluation_month，从上个月往前算"}（定时补推用）</span></div>
+          <span class="unit">${daily ? "天，按 transaction_date，到昨天为止" : "个月，按 evaluation_month，从上个月往前算"}（定时补推 / 立即推送用）</span></div>
+
+        <div class="field" style="align-items:flex-start"><label style="padding-top:3px">推送字段</label>
+          <div style="flex:1">
+            <div class="btn-row" style="margin-bottom:8px;align-items:center">
+              <b data-f="count" style="font-size:12.5px;font-weight:500"></b>
+              <span style="flex:1"></span>
+              <button class="btn btn--sm" data-f="all">全选</button>
+              <button class="btn btn--sm" data-f="none">全不选</button>
+              <button class="btn btn--sm" data-f="nometa">去掉审计字段</button>
+              <button class="btn btn--sm" data-f="pkonly">只留主键</button>
+            </div>
+            <div class="chips cols" data-f="cols">${cols.map(c =>
+              `<button type="button" class="chip" data-col="${esc(c.name)}" aria-pressed="${chosen.has(c.name)}"
+                 title="${esc(c.comment)} · ${esc(c.type)}">${esc(c.name)}<small>${esc(c.comment.replace(/（.*?）/g, "").slice(0, 8))}</small></button>`).join("")}</div>
+            <p class="note" data-f="hint"></p>
+          </div></div>
+
         <div class="field" style="align-items:flex-start"><label style="padding-top:3px">pkId</label>
           <div style="flex:1">
             <div class="chips" data-f="pk">${cols.map(c =>
               `<button type="button" class="chip" data-col="${esc(c.name)}" aria-pressed="${pk.has(c.name)}">${esc(c.name)}</button>`).join("")}</div>
-            <p class="note">下游按这几个字段判断新增还是更新，点选切换。按本地字段选，字段改了下游名时推送会自动用下游名。
+            <p class="note">下游按这几个字段判断新增还是更新，必须在推送字段里。
               本地唯一键：<span class="mono">${esc((meta.unique_key || []).join(", "))}</span></p>
           </div></div>
-        <details class="more" ${t.fields && t.fields.length ? "open" : ""}>
-          <summary>推送字段与下游字段名</summary>
-          <div class="btn-row" style="margin-bottom:8px">
-            <button class="btn btn--sm" data-f="all">全选</button>
-            <button class="btn btn--sm" data-f="none">全不选</button>
-            <button class="btn btn--sm" data-f="nometa">去掉审计字段</button>
-          </div>
+
+        <details class="more" ${Object.keys(aliases).length ? "open" : ""}>
+          <summary>下游字段名（字段名和下游不一样时才需要填）</summary>
           <div class="tbl-wrap"><table class="tbl ftbl">
-            <thead><tr><th style="width:34px"></th><th>本地字段</th><th>类型</th><th>说明</th><th style="width:220px">下游字段名</th></tr></thead>
+            <thead><tr><th>本地字段</th><th>类型</th><th>说明</th><th style="width:240px">下游字段名</th></tr></thead>
             <tbody>${cols.map(c => `
               <tr data-col="${esc(c.name)}" class="${chosen.has(c.name) ? "" : "off"}">
-                <td><input type="checkbox" data-f="col" ${chosen.has(c.name) ? "checked" : ""} style="accent-color:var(--signal)"></td>
                 <td class="mono">${esc(c.name)}</td>
                 <td class="mono muted">${esc(c.type)}</td>
                 <td class="muted">${esc(c.comment)}</td>
@@ -1829,40 +1836,53 @@ function renderSyncTables(){
     updateCount(card);
   }
 }
+const chosenCols = (card) => [...card.querySelectorAll('[data-f="cols"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
+const pkCols = (card) => [...card.querySelectorAll('[data-f="pk"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
 function updateCount(card){
-  const all = card.querySelectorAll('[data-f="col"]'), on = card.querySelectorAll('[data-f="col"]:checked');
-  const pk = [...card.querySelectorAll('[data-f="pk"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
-  const chosen = new Set([...on].map(i => i.closest("tr").dataset.col));
-  const miss = pk.filter(p => !chosen.has(p));
-  const c = card.querySelector('[data-f="count"]');
-  c.innerHTML = `推送 ${on.length}/${all.length} 个字段` +
-    (miss.length ? ` · <span style="color:var(--stop)">主键 ${esc(miss.join(", "))} 未勾选</span>` : "");
+  const all = card.querySelectorAll('[data-f="cols"] .chip').length;
+  const on = chosenCols(card), set = new Set(on);
+  const miss = pkCols(card).filter(p => !set.has(p));
+  card.querySelectorAll(".ftbl tr[data-col]").forEach(tr => tr.classList.toggle("off", !set.has(tr.dataset.col)));
+  card.querySelector('[data-f="count"]').innerHTML = `已选 <b style="color:var(--ok)">${on.length}</b> / ${all} 个字段`;
+  const hint = card.querySelector('[data-f="hint"]');
+  if (miss.length){
+    hint.innerHTML = `<span style="color:var(--stop)">主键 ${esc(miss.join(", "))} 没选进推送字段，保存时会被拦下</span>`;
+  } else if (!card.dataset.configured && on.length === all){
+    hint.innerHTML = `<span style="color:var(--signal)">这张表还没选过字段，目前会推全部 ${all} 个字段。点掉不需要的再保存，之后只推选中的。</span>`;
+  } else {
+    hint.textContent = "只推选中的字段（亮色），点击切换。表里以后新增的字段不会自动推，需要来这里勾选。";
+  }
 }
 const AUDIT = /^(create_time|update_time|created_at|updated_at|collect_time)$/;
 $("syTables").addEventListener("click", (e) => {
   const card = e.target.closest(".tcard"); if (!card) return;
   const chip = e.target.closest(".chip");
-  if (chip){ chip.setAttribute("aria-pressed", String(chip.getAttribute("aria-pressed") !== "true")); updateCount(card); return; }
-  const f = e.target.dataset && e.target.dataset.f;
+  if (chip){
+    chip.setAttribute("aria-pressed", String(chip.getAttribute("aria-pressed") !== "true"));
+    // 选了主键就自动把它加进推送字段：主键不推，下游没法判断新增还是更新
+    if (chip.closest('[data-f="pk"]') && chip.getAttribute("aria-pressed") === "true"){
+      const c = card.querySelector(`[data-f="cols"] .chip[data-col="${CSS.escape(chip.dataset.col)}"]`);
+      if (c) c.setAttribute("aria-pressed", "true");
+    }
+    updateCount(card); return;
+  }
+  const btn = e.target.closest("[data-f]");
+  const f = btn && btn.dataset.f;
   if (f === "dry1" || f === "push1"){
     const name = card.querySelector("h2").textContent;
     if (f === "dry1"){ runSync("all", true, [card.dataset.key], name); return; }
     confirmPush([card.dataset.key]).then(ok => { if (ok) runSync("all", false, [card.dataset.key], name); });
     return;
   }
-  if (f === "all" || f === "none" || f === "nometa"){
-    card.querySelectorAll('[data-f="col"]').forEach(i => {
-      const col = i.closest("tr").dataset.col;
-      i.checked = f === "all" ? true : f === "none" ? false : !AUDIT.test(col) && i.checked;
-      i.closest("tr").classList.toggle("off", !i.checked);
+  if (["all","none","nometa","pkonly"].includes(f)){
+    const pk = new Set(pkCols(card));
+    card.querySelectorAll('[data-f="cols"] .chip').forEach(c => {
+      const on = c.getAttribute("aria-pressed") === "true", col = c.dataset.col;
+      const v = f === "all" ? true : f === "none" ? false : f === "pkonly" ? pk.has(col) : on && !AUDIT.test(col);
+      c.setAttribute("aria-pressed", String(v));
     });
     updateCount(card);
   }
-});
-$("syTables").addEventListener("change", (e) => {
-  if (e.target.dataset.f !== "col") return;
-  e.target.closest("tr").classList.toggle("off", !e.target.checked);
-  updateCount(e.target.closest(".tcard"));
 });
 
 function collectSyncPatch(){
@@ -1870,14 +1890,13 @@ function collectSyncPatch(){
   let err = "";
   document.querySelectorAll("#syTables .tcard").forEach(card => {
     const key = card.dataset.key;
-    const all = [...card.querySelectorAll('[data-f="col"]')];
-    const on = all.filter(i => i.checked).map(i => i.closest("tr").dataset.col);
+    const on = chosenCols(card);
     const aliases = {};
     card.querySelectorAll('[data-f="alias"]').forEach(i => {
       const v = i.value.trim(), col = i.closest("tr").dataset.col;
       if (v && v !== col) aliases[col] = v;
     });
-    const pk = [...card.querySelectorAll('[data-f="pk"] .chip[aria-pressed="true"]')].map(b => b.dataset.col);
+    const pk = pkCols(card);
     const enabled = card.querySelector('[data-f="on"]').checked;
     if (enabled && !on.length) err = err || `${key}：至少勾选一个字段`;
     if (enabled && !pk.length) err = err || `${key}：pkId 至少选一个`;
@@ -1888,7 +1907,7 @@ function collectSyncPatch(){
       remote_table: card.querySelector('[data-f="rt"]').value.trim(),
       lookback: parseInt(card.querySelector('[data-f="lb"]').value, 10) || 1,
       pk,
-      fields: on.length === all.length ? [] : on,     // 全选存空 = 以后新增的字段也自动带上
+      fields: on,     // 永远存明确的清单：以后表里新增的字段不会被自动推出去
       aliases,
     };
   });
@@ -1898,7 +1917,6 @@ function collectSyncPatch(){
     header_name: $("syHeader").value.trim() || "xpftkey",
     key: $("syKey").value,
     batch_size: parseInt($("syBatch").value, 10) || 200,
-    proxy: $("syProxyMode").value === "custom" ? ($("syProxyUrl").value.trim() || "auto") : $("syProxyMode").value,
     after_collect: $("syAfter").checked,
     tables,
     schedule: {
@@ -1948,9 +1966,6 @@ function showSyncResult(label, r){
   openModal("mDry");
 }
 $("btnSyncDry").onclick = () => runSync("all", true);
-$("syProxyMode").onchange = () => {
-  $("syProxyRow").style.display = $("syProxyMode").value === "custom" ? "" : "none";
-};
 $("syHistory").addEventListener("click", (e) => {
   const it = e.target.closest(".sync-item"); if (it) openSyncLog(it.dataset.job);
 });
@@ -1980,7 +1995,7 @@ function confirmPush(keys){
     if (keys ? !keys.includes(key) : !on) return;
     const remote = card.querySelector('[data-f="rt"]').value.trim() || meta.name;
     const lb = parseInt(card.querySelector('[data-f="lb"]').value, 10) || 1;
-    const fields = card.querySelectorAll('[data-f="col"]:checked').length;
+    const fields = chosenCols(card).length;
     rows.push([meta.name === remote ? meta.name : `${meta.name} → ${remote}`,
                `${pushWindow(meta.period, lb)} · ${fields} 个字段`]);
   });

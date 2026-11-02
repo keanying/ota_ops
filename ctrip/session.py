@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
+import time
 from dataclasses import dataclass
 from http.cookiejar import Cookie
 from urllib.parse import urlparse
@@ -57,7 +59,11 @@ class ProxyPlan:
     note: str = ""
 
 
-_plan_cache: dict[str, ProxyPlan] = {}
+# 探测结果短时缓存。不能永久缓存：控制台是常驻进程，代理程序随时可能被开 / 关，
+# 永久缓存的话「第一次推送时代理开着、后来关了」就会一直撞死端口。
+PROBE_TTL = 30.0
+_plan_cache: dict[str, tuple[float, ProxyPlan]] = {}
+_last_note: dict[str, str] = {}
 _plan_lock = threading.Lock()
 
 
@@ -85,7 +91,8 @@ def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL,
                   log=None) -> ProxyPlan:
     """按配置决定访问 ``url`` 走什么代理（默认是携程；推送下游时传下游地址）。
 
-    auto 的探测结果按目标主机在进程内缓存，每个主机只探测一次。
+    auto 的探测结果按目标主机缓存 ``PROBE_TTL`` 秒，过期重新探测；
+    情况变化（代理从通到不通或反过来）时才告警一次，不刷屏。
     """
     mode = (mode or "auto").strip()
     key = mode.lower()
@@ -98,8 +105,9 @@ def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL,
 
     cache_key = urlparse(url).hostname or url
     with _plan_lock:
-        if cache_key in _plan_cache:
-            return _plan_cache[cache_key]
+        hit = _plan_cache.get(cache_key)
+        if hit and time.monotonic() - hit[0] < PROBE_TTL:
+            return hit[1]
         sys_proxy = _system_proxy_for(url)
         if not sys_proxy:
             plan = ProxyPlan("system", note="系统未配置代理，直连")
@@ -108,10 +116,14 @@ def resolve_proxy(mode: str | None, *, url: str = CTRIP_PROBE_URL,
         else:
             plan = ProxyPlan("direct", sys_proxy,
                              f"系统代理 {sys_proxy} 连不上（代理程序没开？），已改为直连。"
-                             "确实需要代理请先打开代理程序；想固定直连：采集在 config.yaml 设 ctrip.proxy: none，"
-                             "推送在「远程同步 → 下游接口 → 代理」选直连")
-            (log or logger).warning(plan.note)
-        _plan_cache[cache_key] = plan
+                             "确实需要代理请先打开代理程序；想固定直连可在 config.yaml 设 ctrip.proxy: none")
+        if _last_note.get(cache_key) != plan.note:
+            _last_note[cache_key] = plan.note
+            if plan.kind == "direct":
+                (log or logger).warning(plan.note)
+            elif sys_proxy:
+                (log or logger).info(plan.note)
+        _plan_cache[cache_key] = (time.monotonic(), plan)
         return plan
 
 
@@ -121,11 +133,15 @@ def apply_proxy(session: requests.Session, plan: ProxyPlan) -> None:
     注意 requests 的合并顺序：``trust_env=True`` 时环境/系统代理会**覆盖**
     ``session.proxies``，所以直连和指定代理都必须关掉 trust_env。
     """
-    if plan.kind == "direct":
-        session.trust_env = False
-        session.proxies.clear()
-    elif plan.kind == "explicit":
-        session.trust_env = False
+    # 一律按探测结果「钉死」，不再让 requests 自己去读系统代理：
+    # 避免探测时是一种情况、真正发请求时又读到另一种
+    session.trust_env = False
+    session.proxies.clear()
+    # trust_env=False 会连带忽略 REQUESTS_CA_BUNDLE（自定义根证书），这里手动保留
+    ca = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("CURL_CA_BUNDLE")
+    if ca:
+        session.verify = ca
+    if plan.kind in ("explicit", "system") and plan.url:
         session.proxies.update({"http": plan.url, "https": plan.url})
 
 
