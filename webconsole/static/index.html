@@ -474,7 +474,10 @@
   .pop{position:absolute;top:52px;right:0;width:340px;background:#fff;border-radius:16px;box-shadow:var(--shadow);
     padding:8px;z-index:30;display:none}
   .pop.on{display:block}
+  .pop-hd{display:flex;align-items:center;justify-content:space-between;padding-right:6px}
   .pop h4{margin:6px 10px 6px;font-size:12px;color:var(--muted);letter-spacing:.04em}
+  .pop .pop-all{width:auto;padding:4px 10px;border-radius:8px;color:var(--primary-d);font-size:12px;font-weight:600}
+  .pop .pop-all:hover{background:var(--primary-50)}
   .pop button{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:0;background:none;padding:9px 10px;
     border-radius:10px;cursor:pointer}
   .pop button:hover{background:var(--soft)}
@@ -2303,23 +2306,39 @@ $("syncRows").addEventListener("click", async (e) => {
   openSyncLog(tr.dataset.id);
 });
 
-/* 铃铛：需要人处理的事 */
+/* 铃铛：需要人处理的事。点过的（或「全部已读」）就不再显示，记在本浏览器里 */
+const READ_KEY = "otaops.bell.read";
+let bellRead = new Set();
+try { bellRead = new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); } catch (e){ /* 隐私模式等读不到就当没读过 */ }
+function saveBellRead(){
+  try { localStorage.setItem(READ_KEY, JSON.stringify([...bellRead].slice(-500))); } catch (e){ /* 存不了也不影响使用 */ }
+}
+let bellItems = [];
 function renderBell(){
   const items = [];
+  // 账号提醒的「已读」绑定当前登录态：之后再次失效会重新提醒
   accounts.filter(a => !a.is_fresh && a.status !== "disabled").forEach(a =>
-    items.push({k: "acct", id: a.account_id, t: `${a.name || a.account || a.account_id} 需要登录`, s: `登录态${stateOf(a)}，定时采集会跳过它`}));
+    items.push({k: "acct", id: a.account_id, key: `acct:${a.account_id}:${a.login_at || "never"}:${a.has_state}`,
+                t: `${a.name || a.account || a.account_id} 需要登录`, s: `登录态${stateOf(a)}，定时采集会跳过它`}));
   runs.filter(r => r.status === "failed").slice(0, 5).forEach(r =>
-    items.push({k: "run", id: r.run_id, t: `采集失败 · ${acctName(r.account_id)}`, s: `${r.created_at.slice(5, 16)} ${r.label}`}));
+    items.push({k: "run", id: r.run_id, key: `run:${r.run_id}`, t: `采集失败 · ${acctName(r.account_id)}`, s: `${r.created_at.slice(5, 16)} ${r.label}`}));
   syncJobs.filter(j => j.status === "failed" && !j.dry_run).slice(0, 3).forEach(j =>
-    items.push({k: "sync", id: j.id, t: "推送失败", s: `${j.created_at.slice(5, 16)} ${j.label}`}));
-  $("bellN").textContent = items.length ? String(items.length) : "";
-  $("bellPop").innerHTML = `<h4>需要处理</h4>` + (items.length ? items.map(i =>
-    `<button data-k="${i.k}" data-id="${esc(i.id)}"><span class="dot ${i.k === "acct" ? "signal" : "stop"}" style="margin-top:6px"></span>
-      <span><b>${esc(i.t)}</b><small>${esc(i.s)}</small></span></button>`).join("") : `<div class="none">一切正常 🎉</div>`);
+    items.push({k: "sync", id: j.id, key: `sync:${j.id}`, t: "推送失败", s: `${j.created_at.slice(5, 16)} ${j.label}`}));
+  bellItems = items.filter(i => !bellRead.has(i.key));
+  $("bellN").textContent = bellItems.length ? String(bellItems.length) : "";
+  $("bellPop").innerHTML = `<div class="pop-hd"><h4>需要处理</h4>${bellItems.length ? '<button class="pop-all" data-all="1">全部已读</button>' : ""}</div>` +
+    (bellItems.length ? bellItems.map(i =>
+      `<button data-k="${i.k}" data-id="${esc(i.id)}" data-key="${esc(i.key)}"><span class="dot ${i.k === "acct" ? "signal" : "stop"}" style="margin-top:6px"></span>
+        <span><b>${esc(i.t)}</b><small>${esc(i.s)}</small></span></button>`).join("") : `<div class="none">没有未读的提醒</div>`);
 }
 $("btnBell").onclick = () => $("bellPop").classList.toggle("on");
 $("bellPop").onclick = (e) => {
+  if (e.target.closest("[data-all]")){
+    bellItems.forEach(i => bellRead.add(i.key)); saveBellRead(); renderBell();
+    return;
+  }
   const b = e.target.closest("button[data-k]"); if (!b) return;
+  bellRead.add(b.dataset.key); saveBellRead(); renderBell();   // 点了就算已读，从列表里消失
   $("bellPop").classList.remove("on");
   if (b.dataset.k === "acct") openBrowser(b.dataset.id);
   if (b.dataset.k === "run") openRunLog(b.dataset.id);
