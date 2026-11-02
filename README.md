@@ -1104,6 +1104,7 @@ ctrip_collector/
 ├── pyproject.toml              # 依赖与数据库初始化配置（uv 管理）
 ├── .env.example                # 敏感信息模板
 ├── run.py                      # 便捷入口，等价于 python -m ctrip.cli
+├── otaops.sh                   # 服务器上管理控制台：start / stop / restart / status / check / logs
 ├── config/
 │   ├── config.example.yaml     # 配置模板（可提交）
 │   └── config.yaml             # 实际配置（已 gitignore）

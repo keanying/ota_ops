@@ -16,7 +16,8 @@ ctrip_collector-1.0.0/
 │   ├── app.py           FastAPI：账号、会话、WebSocket、采集任务
 │   ├── worker.py        浏览器工作线程：CDP 推流 + 输入派发
 │   └── static/index.html
-└── run_console.sh       ← 新增
+├── run_console.sh       前台启动（开发 / 调试用）
+└── otaops.sh            服务器运维：start / stop / restart / status / check / logs
 ```
 
 ## 画面模式
@@ -62,6 +63,37 @@ Chromium 会**直接弹在你桌面上**，滑块验证码用自己的鼠标拖�
 
 想在 Windows 上顺便看看内嵌画面长什么样，`set CONSOLE_STREAM=cdp` 再启动——
 但那是逐帧 JPEG，不是实时流，只适合看 UI，不适合拖滑块。
+
+### 服务器上用 `otaops.sh` 管理（推荐）
+
+`run_console.sh` 是前台运行的，SSH 一断控制台就停了。服务器上改用 `otaops.sh`，它会把控制台放到后台运行：
+
+```bash
+bash otaops.sh start             # 后台启动；等接口能访问了才报成功，失败会打出最近的日志
+bash otaops.sh status            # 进程、端口、接口、调度线程、正在跑的任务，健康时退出码 0
+bash otaops.sh restart           # 重启（改了代码或配置后用）
+bash otaops.sh stop              # 停止；有采集在跑会先问一句，-f 跳过确认
+bash otaops.sh logs -f           # 跟踪输出日志 logs/console.out
+bash otaops.sh check --restart   # 健康检测，异常就自动重启
+```
+
+- **后台运行**：控制台用 `setsid nohup` 启动，SSH 断开也不影响。
+- **PID 文件**：写在 `logs/console.pid`。之前用 `run_console.sh` 起的控制台也能认出来，接着管理。
+- **停止**：按进程组发 `TERM`，远程浏览器、Xvfb、采集子进程会一起收掉。20 秒还没退出就强制结束。
+- **解释器**：依次找 `.venv/`、`venv/`、`python3`；也可以用 `PYTHON=…` 指定。
+- **固定配置**：在项目根目录放一个 `console.env`（已在 .gitignore 里），例如：
+
+  ```bash
+  CONSOLE_HOST=0.0.0.0
+  CONSOLE_PORT=8800
+  PYTHON=/home/bi_normal_user/coleta/app/ctrip_collector/ctrip_collector-1.0.0/venv/bin/python
+  ```
+
+- **看门狗**：用 crontab 每 5 分钟检测一次，进程挂了、接口没响应或调度线程停了，就自动重启：
+
+  ```cron
+  */5 * * * * cd /path/to/ota_ops && bash otaops.sh check --restart >> logs/watchdog.log 2>&1
+  ```
 
 默认只监听 `127.0.0.1:8800`。从本地访问服务器上的控制台，开个 SSH 隧道：
 
