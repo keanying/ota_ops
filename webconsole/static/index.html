@@ -249,8 +249,19 @@
   .ov-two{display:grid;grid-template-columns:1fr 1fr;gap:0}
   .ov-two > div{padding:2px 14px 4px 0;cursor:pointer;min-width:0}
   .ov-two > div + div{padding:2px 0 4px 16px;border-left:1px solid var(--line)}
-  .ov-two b{display:block;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ov-two small{display:block;color:var(--muted);font-size:12px;margin:2px 0 8px}
+  .rt-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .rt-hd b{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .rt-hd .tag{flex:none}
+  .rt small{display:block;color:var(--muted);font-size:12px;margin:3px 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rt-list{display:flex;flex-direction:column;gap:6px}
+  .rt-t{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);background:var(--soft);border-radius:8px;padding:5px 10px}
+  .rt-t i{width:7px;height:7px;border-radius:50%;background:#B8BFCF;flex:none}
+  .rt-t span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rt-t em{font-style:normal;font-weight:800;font-size:12px;color:var(--muted)}
+  .rt-t.ok i{background:var(--ok)} .rt-t.ok em{color:#13805F}
+  .rt-t.warn i{background:var(--warn)} .rt-t.warn em{color:#A86B00}
+  .rt-t.bad i{background:var(--bad)} .rt-t.bad em{color:#C93A3F}
+  .rt-t.info i{background:var(--primary)} .rt-t.info em{color:var(--primary-d)}
   .ov-more{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:14px;border:0;background:var(--soft);
     border-radius:12px;padding:11px 14px;cursor:pointer;font-size:12.5px;color:var(--ink-2)}
   .ov-more b{font-weight:700}
@@ -368,10 +379,15 @@
   .tile b{display:block;font-size:13.5px}
   .tile small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
   .tile .tbl{display:block;color:var(--muted);font-size:10.5px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .jchips{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}
-  .jchip{font-size:11px;font-weight:600;padding:0 7px;border-radius:9px;background:#EEF1F7;color:var(--ink-2);white-space:nowrap}
-  .jchip.ok{background:var(--ok-50);color:var(--ok)} .jchip.warn{background:var(--warn-50);color:#B26A00}
-  .jchip.bad{background:var(--bad-50);color:var(--bad)} .jchip.info{background:var(--info-50);color:var(--primary-d)}
+  .jchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .jchip{display:inline-flex;align-items:center;gap:6px;height:22px;font-size:11.5px;font-weight:600;padding:0 9px;border-radius:11px;
+    background:#F1F3F9;color:var(--ink-2);white-space:nowrap;line-height:1}
+  .jchip::before{content:"";width:6px;height:6px;border-radius:50%;background:#B8BFCF;flex:none}
+  .jchip b{font-weight:800;font-size:11.5px}
+  .jchip.ok{background:var(--ok-50);color:#13805F} .jchip.ok::before{background:var(--ok)}
+  .jchip.warn{background:var(--warn-50);color:#A86B00} .jchip.warn::before{background:var(--warn)}
+  .jchip.bad{background:var(--bad-50);color:#C93A3F} .jchip.bad::before{background:var(--bad)}
+  .jchip.info{background:var(--info-50);color:var(--primary-d)} .jchip.info::before{background:var(--primary)}
   .card.off .card-bd{opacity:.45;pointer-events:none}
   .section-t{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:18px 0 10px}
   .section-t:first-child{margin-top:0}
@@ -1906,18 +1922,30 @@ function renderRuns(){
     </tr>`).join("")
     : EMPTY_ROW(8, "没有运行记录。点右上角「新建采集任务」开始。");
 }
-const JST = {success: ["ok", "✓"], partial: ["warn", "部分"], failed: ["bad", "✗"], skipped: ["", "跳过"], pending: ["", "…"]};
+const runJobs = (r) => r.jobs && r.jobs.length ? r.jobs
+  : (r.mode === "day" ? ["kylin"] : r.mode === "month" ? ((r.params || {}).jobs || ["rating","score"]) : []);
 function jobChips(r){
-  const jobs = r.jobs && r.jobs.length ? r.jobs : (r.mode === "day" ? ["kylin"] : r.mode === "month" ? ((r.params || {}).jobs || ["rating","score"]) : []);
+  const jobs = runJobs(r);
   if (!jobs.length) return "";
   const res = r.job_results || {};
   return `<span class="jchips">${jobs.map(j => {
     const x = res[j];
-    if (!x) return `<span class="jchip ${["queued","running"].includes(r.status) ? "info" : ""}">${JOB_NAME[j] || j}</span>`;
-    const [cls, mark] = JST[x.status] || ["", x.status];
-    const empty = x.status !== "failed" && !x.written;
-    return `<span class="jchip ${empty ? "warn" : cls}" title="采集 ${x.fetched} 行，写入 ${x.written} 行">${JOB_NAME[j] || j} ${empty ? "无数据" : mark + " " + x.written}</span>`;
+    const v = jobResult(r, j);
+    return `<span class="jchip ${v.cls}" title="${esc(v.tip)}">${JOB_NAME[j] || j}${v.text ? `<b>${v.text}</b>` : ""}</span>`;
   }).join("")}</span>`;
+}
+/* 某张表在这次运行里的结果：颜色、显示的值、提示 */
+function jobResult(r, j){
+  const x = (r.job_results || {})[j];
+  if (!x){
+    const live = ["queued","running"].includes(r.status);
+    return {cls: live ? "info" : "", text: live ? "进行中" : "", tip: live ? "采集中" : "这条记录没有分表结果"};
+  }
+  const tip = `采集 ${x.fetched} 行，写入 ${x.written} 行`;
+  if (x.status === "failed") return {cls: "bad", text: "失败", tip};
+  if (x.status === "skipped") return {cls: "", text: "跳过", tip};
+  if (!x.written) return {cls: "warn", text: "无数据", tip};
+  return {cls: "ok", text: `${x.written} 行`, tip};
 }
 function describeRun(r){
   const p = r.params || {};
@@ -2273,7 +2301,7 @@ function renderSyncJobs(){
   $("syncRows").innerHTML = list.length ? list.map(j => {
     const [st, cls] = SYNC_STATUS[j.status] || [j.status, ""];
     const tables = (j.tables || []).map(t =>
-      `<span class="jchip ${t.ok ? (t.rows ? "ok" : "warn") : "bad"}" title="${esc(t.table)}${t.error ? "：" + esc(t.error) : ""}">${esc(t.label || t.table)} ${t.ok ? "✓ " + t.rows : "✗"}</span>`).join("");
+      `<span class="jchip ${t.ok ? (t.rows ? "ok" : "warn") : "bad"}" title="${esc(t.table)}${t.error ? "：" + esc(t.error) : ""}">${esc(t.label || t.table)}<b>${t.ok ? t.rows + " 行" : "失败"}</b></span>`).join("");
     const errs = (j.tables || []).filter(t => !t.ok && t.error).map(t => `${t.label || t.table}：${t.error}`);
     if (j.error) errs.push(j.error);
     return `
@@ -2679,9 +2707,9 @@ function renderOverview(){
     return `<div class="day ${today ? "today" : ""} ${!list.length && !today ? "empty" : ""}" data-day="${dkey(d)}" title="查看这一天的运行记录">
       ${bad ? `<span class="flag bad">失败 ${bad}</span>` : today ? '<span class="flag">今天</span>' : ""}
       <div class="n"><b>${d.getDate()}</b><span>${d.getMonth() + 1} 月<em>${WD[d.getDay()]}</em></span></div>
-      <span class="jchips">${list.length ? [ok && `<span class="jchip ok">完成 ${ok}</span>`, part && `<span class="jchip warn">部分 ${part}</span>`,
-        bad && `<span class="jchip bad">失败 ${bad}</span>`].filter(Boolean).join("") || `<span class="jchip">${list.length} 次</span>`
-        : '<span class="jchip">无任务</span>'}</span>
+      <span class="jchips">${list.length ? [ok && `<span class="jchip ok">完成<b>${ok}</b></span>`, part && `<span class="jchip warn">部分<b>${part}</b></span>`,
+        bad && `<span class="jchip bad">失败<b>${bad}</b></span>`].filter(Boolean).join("") || `<span class="jchip">运行<b>${list.length}</b></span>`
+        : '<span class="muted" style="font-size:12px;font-weight:600">无任务</span>'}</span>
     </div>`;
   }).join("");
   // ---- 推送
@@ -2714,10 +2742,11 @@ function renderOverview(){
   const recent = runs.slice(0, 2);
   $("ovRecentN").textContent = runs.length ? `共 ${runs.length} 条` : "";
   $("ovRecent").innerHTML = recent.length ? recent.map(r => `
-    <div data-run="${esc(r.run_id)}" title="查看日志">
-      <b>${esc(acctName(r.account_id))}</b>
-      <small>${esc(r.created_at.slice(5, 16))} · ${esc(r.label)}</small>
-      <span class="tag ${RUN_CLS[r.status] || ""}">${esc(r.status_text)}</span>${jobChips(r)}
+    <div class="rt" data-run="${esc(r.run_id)}" title="查看日志">
+      <div class="rt-hd"><b>${esc(acctName(r.account_id))}</b><span class="tag ${RUN_CLS[r.status] || ""}">${esc(r.status_text)}</span></div>
+      <small title="${esc(r.label)}">${esc(r.created_at.slice(5, 16))} · ${esc(r.label)}</small>
+      <div class="rt-list">${runJobs(r).map(j => { const v = jobResult(r, j);
+        return `<div class="rt-t ${v.cls}" title="${esc(v.tip)}"><i></i><span>${JOB_NAME[j] || j}</span><em>${v.text || "—"}</em></div>`; }).join("")}</div>
     </div>`).join("") : '<div class="muted" style="grid-column:1/-1">还没有运行记录</div>';
   const weekMore = Math.max(0, runs.filter(r => (r.created_at || "") >= dkey(days[0])).length - recent.length);
   $("ovMore").innerHTML = weekMore ? `本周还有 <b>${weekMore} 条</b>` : "查看全部运行记录";
