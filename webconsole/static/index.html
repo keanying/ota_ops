@@ -3,36 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>携程采集控制台</title>
+<title>OTAOPS</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
 <style>
   :root{
-    --bg1:#E9ECFA; --bg2:#CDD5FB;
-    --panel:#EAEFF9;            /* 主区域底色（参考稿的浅灰蓝） */
+    --bg1:#6A8CE2; --bg2:#5476D2;          /* 外层蓝色背景（参考稿） */
+    --panel:#EEF1F7;                       /* 主面板浅灰 */
     --card:#FFFFFF;
-    --soft:#F3F6FD;             /* 展开行 / 次级面板 */
-    --primary:#5B7CFA;
-    --primary-d:#4766EE;
-    --primary-50:#EEF2FF;
-    --primary-100:#DDE5FF;
-    --ink:#1C2233;
-    --ink-2:#4B5367;
-    --muted:#8C95AA;
-    --line:#E2E7F3;
-    --orange:#FF6A13;
-    --orange-d:#F15B05;
-    --ok:#19A57A;  --ok-50:#E3F6EF;
-    --warn:#E8930C; --warn-50:#FDF1DC;
+    --soft:#F4F6FB;
+    --primary:#6A85E8;
+    --primary-d:#5470DB;
+    --primary-50:#EEF2FE;
+    --primary-100:#DCE3FB;
+    --ink:#1F2434;
+    --ink-2:#4A5166;
+    --muted:#8B93A7;
+    --line:#E3E7F0;
+    --orange:#E8458F;                      /* 品牌强调色：取自 LOGO 的洋红 */
+    --orange-d:#D1307C;
+    --brand:linear-gradient(135deg,#FF4D7E 0%,#E844B4 45%,#A355F5 100%);
+    --ok:#19A57A;  --ok-50:#E2F6EE;
+    --warn:#E39A12; --warn-50:#FDF2DC;
     --bad:#E5484D; --bad-50:#FDE8E8;
-    --info:#5B7CFA; --info-50:#E8EDFF;
+    --info:#6A85E8; --info-50:#EAEFFD;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
-    --sans:"Montserrat",system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --sans:"Inter","Montserrat",system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
     --r:12px;
-    --shadow:0 18px 50px rgba(60,80,170,.14);
+    --shadow:0 30px 80px rgba(20,40,120,.28);
+    --soft-shadow:0 10px 30px rgba(40,60,120,.07);
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
-  body{background:linear-gradient(135deg,var(--bg1),var(--bg2));color:var(--ink);
-    font:14px/1.55 var(--sans);padding:18px;overflow:hidden}
+  body{background:linear-gradient(160deg,var(--bg1),var(--bg2));color:var(--ink);
+    font:14px/1.55 var(--sans);padding:22px;overflow:hidden}
   button{font:inherit;color:inherit}
   input,select{font:inherit}
   ::-webkit-scrollbar{width:8px;height:8px}
@@ -41,48 +44,40 @@
   svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* ================================================================ 外框 */
-  .app{display:grid;grid-template-columns:196px minmax(0,1fr);height:calc(100vh - 36px);
-    background:var(--panel);border-radius:30px;box-shadow:var(--shadow);overflow:hidden}
+  .app{display:grid;grid-template-columns:108px minmax(0,1fr);height:calc(100vh - 44px);
+    background:var(--panel);border-radius:34px;box-shadow:var(--shadow);overflow:hidden}
 
-  /* ---- 侧栏 ---- */
-  .side{display:flex;flex-direction:column;min-height:0}
-  .logo{height:96px;display:flex;align-items:center;gap:9px;padding:0 20px;flex:none}
-  .logo-mark{width:34px;height:34px;border-radius:50%;background:linear-gradient(140deg,#5B7CFA,#22307A);
-    display:grid;place-items:center;box-shadow:0 6px 16px rgba(60,80,200,.35)}
-  .logo-mark svg{width:20px;height:20px;stroke:#fff}
-  .logo b{font-size:14px;line-height:1.2}
-  .logo small{display:block;color:var(--muted);font-size:11px;font-weight:500}
-  .side-body{flex:1;background:var(--primary);border-top-right-radius:44px;padding:30px 0 18px 0;
-    display:flex;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:visible}
-  .cta{margin:0 24px 26px;background:#fff;color:var(--primary-d);border:0;border-radius:22px;
-    padding:10px 16px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(20,40,140,.25);
-    display:flex;align-items:center;justify-content:center;gap:6px;transition:transform .12s}
-  .cta:hover{transform:translateY(-1px)}
-  .nav{list-style:none;margin:0;padding:0}
-  .nav > li{position:relative}
-  .nav-item{display:flex;align-items:center;gap:10px;width:calc(100% - 14px);margin-left:14px;
-    padding:9px 12px;border:0;background:none;color:rgba(255,255,255,.82);cursor:pointer;
-    border-radius:24px 0 0 24px;text-align:left;font-size:13.5px;font-weight:500;letter-spacing:.01em}
-  .nav-item:hover{color:#fff;background:rgba(255,255,255,.08)}
-  .nav-item .bubble{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none}
-  .nav-item.on{background:rgba(255,255,255,.2);color:#fff;font-weight:700}
-  .nav-item.on .bubble{background:#fff;color:var(--primary)}
-  .nav-item .badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--orange);
-    color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
-  .nav-item .badge:empty{display:none}
-  .sub{list-style:none;margin:2px 0 6px 0;padding:0 0 0 52px}
-  .sub button{display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;
-    color:rgba(255,255,255,.7);padding:6px 10px;font-size:13px;border-radius:8px 0 0 8px}
-  .sub button:hover{color:#fff}
-  .sub button.on{color:#fff;font-weight:700}
-  .sub button.on::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#fff;
-    margin:0 8px 2px -14px}
-  .side-foot{margin-top:auto;padding:16px 18px 0;color:rgba(255,255,255,.75);font-size:11.5px}
-  .side-foot b{color:#fff;font-weight:600}
+  /* ---- 图标侧栏（参考稿：细栏 + 圆形按钮） ---- */
+  .rail{display:flex;flex-direction:column;align-items:center;padding:28px 0 24px;position:relative;min-height:0}
+  .rail::after{content:"";position:absolute;right:0;top:30px;bottom:30px;width:1px;background:#DDE2EC}
+  .rail-logo{width:52px;height:52px;display:block;margin-bottom:34px;filter:drop-shadow(0 8px 16px rgba(232,68,180,.35))}
+  .rail-logo img{width:100%;height:100%;display:block}
+  .rail-nav{display:flex;flex-direction:column;gap:14px;align-items:center;flex:1;min-height:0;overflow-y:auto;padding:4px 0}
+  .rail-item{position:relative;border:0;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;
+    gap:6px;color:var(--muted);font-size:11.5px;font-weight:600;padding:0;width:84px}
+  .rail-ic{width:46px;height:46px;border-radius:50%;background:#fff;display:grid;place-items:center;color:#8C94A8;
+    box-shadow:0 6px 16px rgba(40,60,120,.08);transition:transform .12s,background .12s,box-shadow .12s}
+  .rail-ic svg{width:20px;height:20px}
+  .rail-item:hover .rail-ic{transform:translateY(-1px);color:var(--primary-d)}
+  .rail-item.on{color:var(--primary-d)}
+  .rail-item.on .rail-ic{background:var(--primary);color:#fff;box-shadow:0 10px 22px rgba(106,133,232,.55)}
+  .rail-item .badge{position:absolute;top:-2px;right:14px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+    background:var(--brand);color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center;border:2px solid var(--panel)}
+  .rail-item .badge:empty{display:none}
+  .rail-item:focus-visible .rail-ic{outline:2px solid var(--orange);outline-offset:3px}
+  .rail-foot{margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--muted);font-size:10.5px;text-align:center}
+  .rail-foot .dot{width:10px;height:10px}
+
+  /* 页内标签（替代原来的二级菜单） */
+  .ptabs{display:flex;gap:6px;margin-top:10px}
+  .ptabs:empty{display:none}
+  .ptabs button{border:0;background:none;cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;padding:5px 14px;border-radius:16px}
+  .ptabs button:hover{color:var(--primary-d)}
+  .ptabs button.on{background:#fff;color:var(--primary-d);box-shadow:var(--soft-shadow)}
 
   /* ---- 主区 ---- */
   .main{display:flex;flex-direction:column;min-width:0;min-height:0}
-  .topbar{height:96px;flex:none;display:flex;align-items:center;gap:16px;padding:0 40px 0 36px}
+  .topbar{min-height:108px;flex:none;display:flex;align-items:center;gap:16px;padding:18px 44px 14px 40px}
   .topbar h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.01em;line-height:1.1}
   .topbar .crumb{color:var(--muted);font-size:12.5px;margin-top:4px}
   .topbar .right{margin-left:auto;display:flex;align-items:center;gap:14px}
@@ -95,9 +90,9 @@
   .icon-btn .dotn{position:absolute;top:6px;right:7px;min-width:16px;height:16px;border-radius:8px;padding:0 4px;
     background:var(--orange);color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;border:2px solid var(--panel)}
   .icon-btn .dotn:empty{display:none}
-  .avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(140deg,#FFB27A,#FF6A13);color:#fff;
-    display:grid;place-items:center;font-weight:800;font-size:14px}
-  .content{flex:1;overflow-y:auto;padding:0 40px 40px 36px;min-height:0}
+  .avatar{width:42px;height:42px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:var(--soft-shadow)}
+  .avatar img{width:30px;height:30px}
+  .content{flex:1;overflow-y:auto;padding:4px 44px 40px 40px;min-height:0}
   .page{display:none}
   .page.on{display:block}
 
@@ -128,10 +123,10 @@
   .btn:hover:not(:disabled){border-color:var(--primary-100);color:var(--primary-d)}
   .btn:disabled{opacity:.45;cursor:not-allowed}
   .btn:focus-visible,.pill:focus-visible,.nav-item:focus-visible,.cta:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
-  .btn--primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn--primary{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 6px 14px rgba(106,133,232,.3)}
   .btn--primary:hover:not(:disabled){background:var(--primary-d);border-color:var(--primary-d);color:#fff}
-  .btn--orange{background:var(--orange);border-color:var(--orange);color:#fff;border-radius:18px;padding:6px 14px 6px 16px}
-  .btn--orange:hover:not(:disabled){background:var(--orange-d);border-color:var(--orange-d);color:#fff;box-shadow:0 6px 14px rgba(255,106,19,.3)}
+  .btn--orange{background:var(--brand);border:0;color:#fff;border-radius:18px;padding:7px 15px 7px 17px}
+  .btn--orange:hover:not(:disabled){background:var(--brand);color:#fff;box-shadow:0 8px 18px rgba(232,68,180,.35);filter:brightness(1.05)}
   .btn--orange svg{width:14px;height:14px;stroke-width:2.6}
   .btn--danger{color:var(--bad);border-color:#F5CFCF}
   .btn--danger:hover:not(:disabled){background:var(--bad-50);border-color:var(--bad);color:var(--bad)}
@@ -186,8 +181,100 @@
   .tail div{display:flex;gap:12px;white-space:pre-wrap;word-break:break-word}
   .tail .t{color:#6E7891;flex:none} .tail .warn{color:#F5B544} .tail .error{color:#FF8A8A} .tail .done{color:#4FD3A0}
 
+  /* ================================================================ 总览 */
+  .hero{position:relative;display:grid;grid-template-columns:minmax(260px,1.5fr) repeat(3,minmax(130px,1fr));align-items:center;
+    gap:24px;padding:30px 120px 30px 34px;border-radius:26px;color:#fff;margin:6px 0 34px;
+    background:linear-gradient(180deg,#434859 0%,#2C3040 55%,#252836 100%);
+    box-shadow:0 34px 60px -24px rgba(25,30,55,.55),inset 0 1px 0 rgba(255,255,255,.12),inset 0 -2px 0 rgba(0,0,0,.25)}
+  .hero::after{content:"";position:absolute;left:8%;right:8%;bottom:-26px;height:26px;border-radius:50%;
+    background:radial-gradient(ellipse at center,rgba(40,50,90,.18),transparent 70%)}
+  .hero-id{display:flex;align-items:center;gap:20px;min-width:0}
+  .ring{position:relative;width:104px;height:104px;flex:none}
+  .ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+  .ring .trk{stroke:rgba(255,255,255,.1)} .ring .bar{stroke:#8FD1FF;filter:drop-shadow(0 0 6px rgba(143,209,255,.9));transition:stroke-dashoffset .8s}
+  .ring img{position:absolute;inset:16px;width:72px;height:72px;border-radius:50%;background:#fff;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  .hero-id b{display:block;font-size:22px;font-weight:800;letter-spacing:.02em}
+  .hero-id .sub{color:#A9B0C4;font-size:13px;margin-top:2px}
+  .hero-id .mini{display:flex;align-items:center;gap:8px;margin-top:12px;color:#C9CEDC;font-size:12px}
+  .avs{display:flex}
+  .avs span{width:24px;height:24px;border-radius:50%;border:2px solid #2E3242;margin-left:-6px;display:grid;place-items:center;
+    font-size:10px;font-weight:800;color:#fff}
+  .avs span:first-child{margin-left:0}
+  .hstat{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+  .hstat .lbl{font-size:12px;font-weight:800;letter-spacing:.12em}
+  .big{font-size:52px;font-weight:800;line-height:1;letter-spacing:-.02em;text-shadow:0 0 18px rgba(130,180,255,.55)}
+  .big small{font-size:22px;font-weight:700;opacity:.8}
+  .lbl.blue{color:#9CC5FF;text-shadow:0 0 10px rgba(120,170,255,.6)}
+  .lbl.green{color:#7CF0BE;text-shadow:0 0 10px rgba(80,230,170,.6)}
+  .lbl.pink{color:#FF9BD0;text-shadow:0 0 10px rgba(255,120,200,.6)}
+  .bars{display:flex;gap:8px;align-items:flex-end;height:52px}
+  .bars i{width:11px;border-radius:6px;background:linear-gradient(180deg,#B6FFDF,#3FD99A);box-shadow:0 0 12px rgba(63,217,154,.7);min-height:6px}
+  .bars i.zero{background:#4A5064;box-shadow:none}
+  .bars i.bad{background:linear-gradient(180deg,#FFC2D6,#FF5C93);box-shadow:0 0 12px rgba(255,92,147,.6)}
+  .donut{width:58px;height:58px;transform:rotate(-90deg)}
+  .donut .trk{stroke:rgba(255,255,255,.12)} .donut .bar{stroke:#FF7BC0;filter:drop-shadow(0 0 6px rgba(255,123,192,.9));transition:stroke-dashoffset .8s}
+  .hero-fab{position:absolute;right:-18px;top:50%;transform:translateY(-50%);width:86px;height:86px;border-radius:20px;border:0;cursor:pointer;
+    background:linear-gradient(160deg,#B8A6FF,#7E6CF2);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    font-size:10.5px;font-weight:800;letter-spacing:.06em;box-shadow:0 14px 30px rgba(110,90,240,.45),inset 0 1px 0 rgba(255,255,255,.35)}
+  .hero-fab svg{width:26px;height:26px;stroke-width:2}
+  .ov-row{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:22px;align-items:start;margin-bottom:26px}
+  .ov-help{padding:18px 6px}
+  .ov-help h2{margin:0 0 10px;font-size:24px;font-weight:800}
+  .ov-help p{margin:0 0 20px;color:var(--muted);font-size:13.5px;line-height:1.6}
+  .ov-help small{display:block;margin-top:10px;color:var(--muted);font-size:12px}
+  .btn-pill{border-radius:12px;padding:10px 18px}
+  .ov-card{padding:18px 20px;margin:0}
+  .ov-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .ov-hd span{font-size:12px;font-weight:800;letter-spacing:.1em;color:var(--ink-2)}
+  .ov-hd small{color:var(--muted);font-size:12px}
+  .ov-two{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .ov-two > div{padding:2px 14px 4px 0;cursor:pointer;min-width:0}
+  .ov-two > div + div{padding:2px 0 4px 16px;border-left:1px solid var(--line)}
+  .ov-two b{display:block;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ov-two small{display:block;color:var(--muted);font-size:12px;margin:2px 0 8px}
+  .ov-more{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:14px;border:0;background:var(--soft);
+    border-radius:12px;padding:11px 14px;cursor:pointer;font-size:12.5px;color:var(--ink-2)}
+  .ov-more b{font-weight:700}
+  .nx{display:flex;align-items:center;gap:12px;border-radius:12px;padding:10px 12px;margin-bottom:10px;cursor:pointer}
+  .nx:last-child{margin-bottom:0}
+  .nx .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none}
+  .nx .ic svg{width:16px;height:16px;stroke-width:2.2}
+  .nx b{font-size:13px;font-weight:700;flex:1;min-width:0}
+  .nx small{color:var(--muted);font-size:11.5px;white-space:nowrap}
+  .nx .go{width:24px;height:24px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center;flex:none;opacity:.7}
+  .nx .go svg{width:11px;height:11px;stroke-width:2.6}
+  .nx.pink{background:#FDECF1;color:#E5487A} .nx.pink .ic{background:linear-gradient(135deg,#FF7E9F,#E8457A)}
+  .nx.green{background:#E3F6F0;color:#1F9E7A} .nx.green .ic{background:linear-gradient(135deg,#55D3A8,#1FA57E)}
+  .nx.yellow{background:#FDF5DF;color:#C98B0B} .nx.yellow .ic{background:linear-gradient(135deg,#FFD36B,#F0A61B)}
+  .nx.off{filter:grayscale(1);opacity:.6}
+  .days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:14px}
+  .day{position:relative;background:#fff;border-radius:18px;padding:18px 16px 14px;border:1px solid transparent;cursor:pointer;
+    box-shadow:var(--soft-shadow);min-width:0}
+  .day.empty{background:transparent;border-color:#D9DEEA;box-shadow:none}
+  .day.today{background:linear-gradient(160deg,#8EE6C4,#BFF0E0);border-color:transparent}
+  .day .n{display:flex;align-items:center;gap:10px}
+  .day .n b{font-size:30px;font-weight:800;line-height:1}
+  .day .n span{font-size:11px;color:var(--muted);line-height:1.3}
+  .day .n span em{display:block;font-style:normal;font-weight:800;color:var(--ink-2);letter-spacing:.06em}
+  .day .jchips{margin-top:10px}
+  .day .flag{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#2E3242;color:#fff;font-size:10px;font-weight:800;
+    letter-spacing:.08em;padding:2px 9px;border-radius:8px;white-space:nowrap}
+  .day .flag.bad{background:var(--bad)}
+  @media (max-width:1200px){.hero{grid-template-columns:1fr 1fr;padding-right:34px}.hero-fab{display:none}.ov-row{grid-template-columns:1fr}
+    .days{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  @media (max-width:700px){.hero{grid-template-columns:1fr}.days{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+  /* 系统设置 */
+  .sys-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+  .sys-grid .card{margin:0}
+  .sys-kv{display:grid;grid-template-columns:100px 1fr;gap:10px 14px;font-size:13px}
+  .sys-kv span{color:var(--muted)}
+  .sys-kv b{font-weight:600;word-break:break-all}
+  .links{display:flex;gap:10px;flex-wrap:wrap}
+  @media (max-width:1200px){.sys-grid{grid-template-columns:1fr}}
+
   /* ================================================================ 平铺表格（账户管理） */
-  .xt-wrap{background:var(--card);border-radius:16px;overflow:auto;box-shadow:0 1px 2px rgba(30,40,90,.03)}
+  .xt-wrap{background:var(--card);border-radius:20px;overflow:auto;box-shadow:var(--soft-shadow)}
   table.xt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;min-width:1000px}
   .xt th{position:sticky;top:0;background:#F6F7FD;color:var(--ink-2);font-weight:600;text-align:left;padding:14px 12px;
     white-space:nowrap;z-index:1;font-size:13px}
@@ -207,7 +294,7 @@
   .ib svg{width:18px;height:18px}
   .ib:hover{background:var(--primary-50)}
   .ib.solid svg{background:var(--primary);color:#fff;stroke:#fff;border-radius:6px;padding:2px;width:22px;height:22px}
-  .ib.orange{color:var(--orange-d)} .ib.orange:hover{background:#FFF2EA}
+  .ib.orange{color:var(--orange-d)} .ib.orange:hover{background:#FDEBF4}
   .ib.red{color:var(--bad)} .ib.red:hover{background:var(--bad-50)}
   .ib.dark{color:var(--ink)}
   .ib:disabled{opacity:.25;cursor:not-allowed;background:none}
@@ -219,7 +306,7 @@
   @keyframes spin{to{transform:rotate(360deg)}}
 
   /* ================================================================ 卡片 / 表单 */
-  .card{background:var(--card);border-radius:16px;margin-bottom:18px;box-shadow:0 1px 2px rgba(30,40,90,.03)}
+  .card{background:var(--card);border-radius:20px;margin-bottom:18px;box-shadow:var(--soft-shadow)}
   .card-hd{display:flex;align-items:center;gap:10px;padding:16px 22px;border-bottom:1px solid var(--line)}
   .card-hd h2{margin:0;font-size:15px;font-weight:700}
   .card-hd small{color:var(--muted);font-size:12.5px}
@@ -281,7 +368,7 @@
   .chips{display:flex;flex-wrap:wrap;gap:7px}
   .chip{border:1px solid var(--line);border-radius:16px;padding:3px 12px;font:12px var(--mono);cursor:pointer;color:var(--muted);background:#fff}
   .chip:hover{border-color:var(--primary-100)}
-  .chip[aria-pressed="true"]{border-color:var(--orange);color:var(--orange-d);background:#FFF2EA}
+  .chip[aria-pressed="true"]{border-color:var(--orange);color:var(--orange-d);background:#FDEBF4}
   .chips.cols .chip{display:inline-flex;align-items:baseline;gap:5px;text-decoration:line-through;opacity:.7}
   .chips.cols .chip small{font:11px var(--sans);color:inherit;opacity:.85}
   .chips.cols .chip[aria-pressed="true"]{border-color:var(--primary);color:var(--primary-d);background:var(--primary-50);text-decoration:none;opacity:1}
@@ -338,7 +425,7 @@
     background:rgba(255,255,255,.95);color:var(--ink);padding:6px 14px;border-radius:16px;font-size:12.5px;box-shadow:0 8px 20px rgba(0,0,0,.25)}
   .live-hint.on{display:flex}
   .attention{position:absolute;left:50%;transform:translateX(-50%);bottom:20px;z-index:20;display:none;align-items:center;gap:11px;
-    background:var(--orange);color:#fff;padding:10px 18px;border-radius:22px;font-weight:700;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    background:var(--brand);color:#fff;padding:10px 18px;border-radius:22px;font-weight:700;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
   .attention.on{display:flex}
   .attention .x{background:rgba(255,255,255,.22);border:0;border-radius:12px;padding:3px 10px;cursor:pointer;font-size:12px;color:#fff}
   .acct-card{border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--soft)}
@@ -351,11 +438,11 @@
   .steps li.done{color:var(--ink)}
   .steps li.done .pip{background:var(--ok);border-color:var(--ok)}
   .steps li.now{color:var(--orange-d);font-weight:700}
-  .steps li.now .pip{background:var(--orange);border-color:var(--orange);box-shadow:0 0 0 4px rgba(255,106,19,.15)}
+  .steps li.now .pip{background:var(--orange);border-color:var(--orange);box-shadow:0 0 0 4px rgba(232,69,143,.15)}
   .steps li.bad{color:var(--bad)}
   .steps li.bad .pip{background:var(--bad);border-color:var(--bad)}
   .steps small{display:block;color:var(--muted);font-weight:400;font-size:11.5px}
-  .callout{border-radius:12px;background:#FFF2EA;border:1px solid #FFD2B8;padding:10px 12px;margin-bottom:14px;font-size:12.5px}
+  .callout{border-radius:12px;background:#FDEBF4;border:1px solid #F7C3DD;padding:10px 12px;margin-bottom:14px;font-size:12.5px}
   .callout h4{margin:0 0 4px;font-size:13px;color:var(--orange-d)}
   .callout p{margin:0}
   .side-h{color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.04em;margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
@@ -385,13 +472,13 @@
   @media (max-width:900px){
     body{padding:0}
     .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:100vh;border-radius:0}
-    .side{flex-direction:row;overflow-x:auto}
-    .logo{height:auto;padding:12px 16px}
-    .side-body{flex-direction:row;border-radius:0;padding:8px 10px;align-items:center}
-    .cta{margin:0 10px 0 0;white-space:nowrap}
-    .nav{display:flex}
-    .nav-item{width:auto;margin:0;border-radius:20px;white-space:nowrap}
-    .sub,.side-foot{display:none}
+    .rail{flex-direction:row;padding:10px 12px;gap:10px;overflow-x:auto}
+    .rail::after{display:none}
+    .rail-logo{width:36px;height:36px;margin:0;flex:none}
+    .rail-nav{flex-direction:row;gap:4px;overflow:visible}
+    .rail-item{width:60px;font-size:10.5px}
+    .rail-ic{width:36px;height:36px}
+    .rail-foot{display:none}
     .topbar{height:auto;padding:16px;flex-wrap:wrap}
     .topbar h1{font-size:22px}
     .sched-pill{display:none}
@@ -427,6 +514,9 @@
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7.5a8 8 0 1011.4 0"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="2"/><rect x="13" y="4" width="7" height="5" rx="2"/><rect x="13" y="11" width="7" height="9" rx="2"/><rect x="4" y="15" width="7" height="5" rx="2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></symbol>
+  <symbol id="i-pie" viewBox="0 0 24 24"><path d="M21 12A9 9 0 1112 3v9z"/><path d="M15 3.5A9 9 0 0120.5 9H15z"/></symbol>
   <symbol id="i-redo" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
   <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6L5 19a1 1 0 001 2h12a1 1 0 001-2l-5-10V3"/><path d="M7.5 15h9"/></symbol>
@@ -435,39 +525,23 @@
 
 <div class="app">
   <!-- ================================================================ 侧栏 -->
-  <aside class="side">
-    <div class="logo">
-      <div class="logo-mark"><svg class="i"><use href="#i-cube"/></svg></div>
-      <div><b>携程采集</b><small>OTA 运营控制台</small></div>
-    </div>
-    <div class="side-body">
-      <ul class="nav">
-        <li><button class="nav-item" data-route="accounts"><span class="bubble"><svg class="i"><use href="#i-user"/></svg></span>账户管理<span class="badge" id="badgeAcct"></span></button></li>
-        <li>
-          <button class="nav-item" data-route="runs" data-group="tasks"><span class="bubble"><svg class="i"><use href="#i-list"/></svg></span>任务管理<span class="badge" id="badgeTasks"></span></button>
-          <ul class="sub" data-group="tasks">
-            <li><button data-route="runs">运行记录</button></li>
-            <li><button data-route="schedule">定时采集</button></li>
-          </ul>
-        </li>
-        <li>
-          <button class="nav-item" data-route="sync-tables" data-group="sync"><span class="bubble"><svg class="i"><use href="#i-up"/></svg></span>远程同步<span class="badge" id="badgeSync"></span></button>
-          <ul class="sub" data-group="sync">
-            <li><button data-route="sync-tables">推送表与字段</button></li>
-            <li><button data-route="sync-api">接口与策略</button></li>
-            <li><button data-route="sync-logs">推送记录</button></li>
-          </ul>
-        </li>
-        <li><button class="nav-item" data-route="notify"><span class="bubble"><svg class="i"><use href="#i-bell"/></svg></span>通知设置</button></li>
-      </ul>
-      <div class="side-foot">画面模式 <b id="modeBar">—</b><br>登录态有效期 <b id="ttl">—</b> 小时</div>
-    </div>
+  <aside class="rail">
+    <a class="rail-logo" href="#/overview" title="OTAOPS"><img src="/static/logo.png" alt="OTAOPS"></a>
+    <nav class="rail-nav" aria-label="主菜单">
+      <button class="rail-item" data-route="overview" data-group="overview"><span class="rail-ic"><svg class="i"><use href="#i-grid"/></svg></span>总览</button>
+      <button class="rail-item" data-route="accounts" data-group="accounts"><span class="rail-ic"><svg class="i"><use href="#i-user"/></svg></span>账户管理<span class="badge" id="badgeAcct"></span></button>
+      <button class="rail-item" data-route="runs" data-group="tasks"><span class="rail-ic"><svg class="i"><use href="#i-list"/></svg></span>任务管理<span class="badge" id="badgeTasks"></span></button>
+      <button class="rail-item" data-route="sync-tables" data-group="sync"><span class="rail-ic"><svg class="i"><use href="#i-up"/></svg></span>远程同步<span class="badge" id="badgeSync"></span></button>
+      <button class="rail-item" data-route="notify" data-group="notify"><span class="rail-ic"><svg class="i"><use href="#i-bell"/></svg></span>通知管理</button>
+      <button class="rail-item" data-route="system" data-group="system"><span class="rail-ic"><svg class="i"><use href="#i-gear"/></svg></span>系统设置</button>
+    </nav>
+    <div class="rail-foot" title="定时采集与补推的调度线程"><span class="dot" id="schedDot2"></span>调度</div>
   </aside>
 
   <!-- ================================================================ 主区 -->
   <main class="main">
     <header class="topbar">
-      <div><h1 id="pageTitle">账户管理</h1><div class="crumb" id="pageCrumb"></div></div>
+      <div><h1 id="pageTitle">总览</h1><div class="crumb" id="pageCrumb"></div><div class="ptabs" id="pageTabs"></div></div>
       <div class="right">
         <button class="btn btn--primary" id="btnNewTask" style="display:none;border-radius:20px;padding:9px 18px"><svg class="i" style="width:15px;height:15px"><use href="#i-plus"/></svg>新建采集任务</button>
         <div class="sched-pill" title="定时采集与补推的调度线程"><span class="dot" id="schedDot"></span><span id="schedText">调度 —</span></div>
@@ -475,11 +549,89 @@
           <button class="icon-btn" id="btnBell" title="需要处理的事项"><svg class="i"><use href="#i-bell"/></svg><span class="dotn" id="bellN"></span></button>
           <div class="pop" id="bellPop"></div>
         </div>
-        <div class="avatar" title="OTA 采集控制台">OTA</div>
+        <div class="avatar" title="OTAOPS"><img src="/static/logo.png" alt=""></div>
       </div>
     </header>
 
     <div class="content">
+      <!-- ============================================================ 总览 -->
+      <section class="page" id="page-overview">
+        <div class="hero">
+          <div class="hero-id">
+            <div class="ring" title="登录态有效的账号占比">
+              <svg viewBox="0 0 120 120"><circle class="trk" cx="60" cy="60" r="54" fill="none" stroke-width="6"/>
+                <circle class="bar" id="ovRing" cx="60" cy="60" r="54" fill="none" stroke-width="6" stroke-linecap="round"
+                        stroke-dasharray="339.3" stroke-dashoffset="339.3"/></svg>
+              <img src="/static/logo.png" alt="">
+            </div>
+            <div style="min-width:0">
+              <b>OTAOPS</b><div class="sub">携程 OTA 采集 · 推送</div>
+              <div class="mini"><span class="avs" id="ovAvs"></span><span id="ovAcctTxt">— 个账号</span></div>
+            </div>
+          </div>
+          <div class="hstat"><div class="big" id="ovRate">—</div><span class="lbl blue">近 7 天采集成功率</span></div>
+          <div class="hstat"><div class="bars" id="ovBars"></div><span class="lbl green">近 7 天采集</span></div>
+          <div class="hstat">
+            <svg class="donut" viewBox="0 0 60 60"><circle class="trk" cx="30" cy="30" r="22" fill="none" stroke-width="9"/>
+              <circle class="bar" id="ovDonut" cx="30" cy="30" r="22" fill="none" stroke-width="9" stroke-linecap="round"
+                      stroke-dasharray="138.2" stroke-dashoffset="138.2"/></svg>
+            <span class="lbl pink" id="ovDonutLbl">推送成功</span></div>
+          <button class="hero-fab" data-route="runs"><svg class="i"><use href="#i-pie"/></svg>全部记录</button>
+        </div>
+
+        <div class="ov-row">
+          <div class="ov-help">
+            <h2 id="ovHelpT">—</h2>
+            <p id="ovHelpP"></p>
+            <button class="btn btn--primary btn-pill" id="ovHelpBtn">—</button>
+            <small id="ovHelpS"></small>
+          </div>
+          <div class="card ov-card">
+            <div class="ov-hd"><span>最近任务</span><small id="ovRecentN"></small></div>
+            <div class="ov-two" id="ovRecent"></div>
+            <button class="ov-more" data-route="runs"><span id="ovMore">查看全部运行记录</span><svg class="i" style="width:14px;height:14px"><use href="#i-right"/></svg></button>
+          </div>
+          <div class="card ov-card">
+            <div class="ov-hd"><span>下次运行</span><small id="ovNextN"></small></div>
+            <div id="ovNext"></div>
+          </div>
+        </div>
+
+        <div class="section-t" style="letter-spacing:.12em">近 7 天采集</div>
+        <div class="days" id="ovDays"></div>
+      </section>
+
+      <!-- ============================================================ 系统设置 -->
+      <section class="page" id="page-system">
+        <div class="sys-grid">
+          <div class="card"><div class="card-hd"><h2>系统</h2><span class="tag ok" id="sysSched">—</span></div>
+            <div class="card-bd sys-kv" id="sysBase"></div></div>
+          <div class="card"><div class="card-hd"><h2>数据库</h2><span class="tag" id="sysDbTag">—</span></div>
+            <div class="card-bd sys-kv" id="sysDb"></div></div>
+          <div class="card"><div class="card-hd"><h2>浏览器与登录</h2></div>
+            <div class="card-bd sys-kv">
+              <span>画面模式</span><b id="modeBar">—</b>
+              <span>登录态有效期</span><b><span id="ttl">—</span> 小时</b>
+              <span id="sysBrowserK"></span><b id="sysBrowserV"></b>
+            </div></div>
+          <div class="card"><div class="card-hd"><h2>采集</h2></div>
+            <div class="card-bd sys-kv" id="sysCollect"></div></div>
+          <div class="card"><div class="card-hd"><h2>网络与存储</h2></div>
+            <div class="card-bd sys-kv" id="sysStore"></div></div>
+          <div class="card"><div class="card-hd"><h2>常用入口</h2></div>
+            <div class="card-bd">
+              <div class="links">
+                <button class="btn" data-route="schedule">定时采集</button>
+                <button class="btn" data-route="sync-api">推送接口与策略</button>
+                <button class="btn" data-route="notify">通知管理</button>
+                <a class="btn" href="/docs" target="_blank" rel="noopener">HTTP 接口文档</a>
+                <a class="btn" href="/api/ws-spec" target="_blank" rel="noopener">WebSocket 协议</a>
+              </div>
+              <p class="note">数据库、浏览器等配置在 <span class="mono">config/config.yaml</span> 与 <span class="mono">.env</span> 里改，改完重启控制台生效。</p>
+            </div></div>
+        </div>
+      </section>
+
       <!-- ============================================================ 账户管理 -->
       <section class="page" id="page-accounts">
         <div class="toolbar">
@@ -1025,33 +1177,46 @@ function pills(boxId, items, cur, onPick){
 
 /* ================================================================ 路由 */
 const ROUTES = {
-  "accounts":    {title: "账户管理", crumb: "账号、登录态与远程浏览器", group: null},
-  "runs":        {title: "运行记录", crumb: "任务管理 / 运行记录", group: "tasks"},
-  "schedule":    {title: "定时采集", crumb: "任务管理 / 定时采集", group: "tasks"},
-  "sync-tables": {title: "推送表与字段", crumb: "远程同步 / 推送表与字段", group: "sync"},
-  "sync-api":    {title: "接口与策略", crumb: "远程同步 / 接口与策略", group: "sync"},
-  "sync-logs":   {title: "推送记录", crumb: "远程同步 / 推送记录", group: "sync"},
-  "notify":      {title: "通知设置", crumb: "需要人工验证时叫你", group: null},
+  "overview":    {title: "总览", crumb: "OTAOPS · 携程 OTA 采集与推送", group: "overview"},
+  "accounts":    {title: "账户管理", crumb: "账号、登录态与远程浏览器", group: "accounts"},
+  "runs":        {title: "任务管理", crumb: "运行记录", group: "tasks"},
+  "schedule":    {title: "任务管理", crumb: "定时采集", group: "tasks"},
+  "sync-tables": {title: "远程同步", crumb: "推送表与字段", group: "sync"},
+  "sync-api":    {title: "远程同步", crumb: "接口与策略", group: "sync"},
+  "sync-logs":   {title: "远程同步", crumb: "推送记录", group: "sync"},
+  "notify":      {title: "通知管理", crumb: "需要人工验证、登录态失效时通知到人", group: "notify"},
+  "system":      {title: "系统设置", crumb: "运行环境与关键配置", group: "system"},
 };
-let route = "accounts";
+// 原来的二级菜单改成页内标签
+const TABS = {
+  tasks: [["runs", "运行记录"], ["schedule", "定时采集"]],
+  sync:  [["sync-tables", "推送表与字段"], ["sync-api", "接口与策略"], ["sync-logs", "推送记录"]],
+};
+let route = "overview";
 function go(r){ if (location.hash !== "#/" + r) location.hash = "#/" + r; else showRoute(r); }
 function showRoute(r){
-  if (!ROUTES[r]) r = "accounts";
+  if (!ROUTES[r]) r = "overview";
   route = r;
   const meta = ROUTES[r];
   document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === "page-" + r));
-  document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("on",
-    b.dataset.route === r || (meta.group && b.dataset.group === meta.group)));
-  document.querySelectorAll(".sub").forEach(u => u.style.display = u.dataset.group === meta.group ? "" : "none");
-  document.querySelectorAll(".sub button").forEach(b => b.classList.toggle("on", b.dataset.route === r));
+  document.querySelectorAll(".rail-item").forEach(b => b.classList.toggle("on", b.dataset.group === meta.group));
   $("pageTitle").textContent = meta.title;
-  $("btnNewTask").style.display = meta.group === "tasks" ? "" : "none";   // 只在任务管理页出现
   $("pageCrumb").textContent = meta.crumb;
-  ({accounts: loadAccounts, runs: loadRuns, schedule: () => { loadCollectSchedule(); loadStatus(); },
-    "sync-tables": loadSync, "sync-api": loadSync, "sync-logs": loadStatus, notify: loadSettings})[r]?.();
+  $("pageTabs").innerHTML = (TABS[meta.group] || []).map(([k, t]) =>
+    `<button class="${k === r ? "on" : ""}" data-route="${k}">${t}</button>`).join("");
+  $("btnNewTask").style.display = ["tasks", "overview", "accounts"].includes(meta.group) ? "" : "none";
+  document.title = `${meta.title} · OTAOPS`;
+  ({overview: () => { loadAccounts(); loadRuns(); loadStatus(); }, accounts: loadAccounts, runs: loadRuns,
+    schedule: () => { loadCollectSchedule(); loadStatus(); },
+    "sync-tables": loadSync, "sync-api": loadSync, "sync-logs": loadStatus, notify: loadSettings,
+    system: loadSystem})[r]?.();
 }
 window.addEventListener("hashchange", () => showRoute(location.hash.replace(/^#\//, "")));
-document.querySelectorAll("[data-route]").forEach(b => b.addEventListener("click", () => go(b.dataset.route)));
+// 用委托：总览卡片、页内标签这些动态生成的按钮也能跳转
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-route]");
+  if (b && !b.closest(".modal")){ e.preventDefault(); go(b.dataset.route); }
+});
 $("btnNewTask").onclick = () => openTaskDialog(null);
 
 /* ================================================================ 弹窗 */
@@ -1107,6 +1272,7 @@ async function loadAccounts(){
   const stale = accounts.filter(a => !a.is_fresh && a.status !== "disabled");
   $("badgeAcct").textContent = stale.length ? String(stale.length) : "";
   renderAccounts();
+  renderOverview();
   const sel = $("runFilterAcct"), keep = sel.value;
   sel.innerHTML = `<option value="">全部账号</option>` + accounts.map(a =>
     `<option value="${esc(a.account_id)}">${esc(a.name || a.account || a.account_id)}</option>`).join("");
@@ -1673,6 +1839,7 @@ async function loadRuns(){
   const active = runs.filter(r => r.status === "queued" || r.status === "running").length;
   $("badgeTasks").textContent = active ? String(active) : "";
   renderRuns();
+  renderOverview();
   renderBell();
 }
 function renderRuns(){
@@ -1685,7 +1852,7 @@ function renderRuns(){
     ["failed","失败",base.filter(groups.failed).length],["skipped","跳过",base.filter(groups.skipped).length]],
     runFilter, (v) => { runFilter = v; runPage = 1; renderRuns(); });
   const list = base.filter(groups[runFilter]).filter(r => !q ||
-    [r.label, r.detail, r.account_id, acctName(r.account_id)].some(x => String(x || "").toLowerCase().includes(q)));
+    [r.label, r.detail, r.account_id, acctName(r.account_id), r.created_at].some(x => String(x || "").toLowerCase().includes(q)));
   const size = parseInt($("runPageSize").value, 10) || 20, pages = Math.max(1, Math.ceil(list.length / size));
   runPage = Math.min(runPage, pages);
   const shown = list.slice((runPage - 1) * size, runPage * size);
@@ -2047,6 +2214,7 @@ $("btnCsPreview").onclick = async () => {
 async function loadStatus(){
   try { status = await api("/api/sync/status"); } catch (e){ return; }
   $("schedDot").className = "dot " + (status.scheduler_alive ? "ok" : "stop");
+  $("schedDot2").className = "dot " + (status.scheduler_alive ? "ok" : "stop");
   $("schedText").textContent = status.scheduler_alive
     ? `调度运行中 · 下次采集 ${(status.next_collect_daily || "未启用").slice(5)}` : "调度未启动";
   $("syNext").textContent = `下次补推：日 ${status.next_daily || "未启用"} · 月 ${status.next_monthly || "未启用"}`;
@@ -2059,6 +2227,7 @@ async function loadStatus(){
   $("badgeSync").textContent = syncJobs.some(j => j.status === "running") ? "…" : (failed ? String(failed) : "");
   renderSyncJobs();
   renderBell();
+  renderOverview();
 }
 let syncFilter = "all";
 function renderSyncJobs(){
@@ -2417,6 +2586,133 @@ function confirmPush(keys){
   });
 }
 
+/* ================================================================ 总览 */
+const WD = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const dkey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function untilText(t){
+  if (!t) return "未启用";
+  const ms = new Date(t.replace(" ", "T")) - new Date();
+  if (isNaN(ms)) return t;
+  const h = Math.floor(ms / 3600000);
+  return ms < 0 ? "即将运行" : h < 1 ? `${Math.max(1, Math.round(ms / 60000))} 分钟后` : h < 48 ? `${h} 小时后` : `${Math.round(h / 24)} 天后`;
+}
+function renderOverview(){
+  if (!$("page-overview")) return;
+  // ---- 账号
+  const active = accounts.filter(a => a.status !== "disabled");
+  const fresh = active.filter(a => a.is_fresh);
+  const ratio = active.length ? fresh.length / active.length : 0;
+  $("ovRing").style.strokeDashoffset = String(339.3 * (1 - ratio));
+  $("ovAcctTxt").textContent = `${active.length} 个账号 · ${fresh.length} 个登录态有效`;
+  const colors = ["#FF7E9F", "#55D3A8", "#FFC14D", "#7E9BFF", "#C07CFF"];
+  $("ovAvs").innerHTML = active.slice(0, 4).map((a, i) =>
+    `<span style="background:${colors[i % colors.length]}" title="${esc(a.name || a.account_id)}">${esc((a.name || a.account_id || "?").slice(0, 1))}</span>`).join("");
+  // ---- 近 7 天
+  const days = [];
+  for (let i = 6; i >= 0; i--){ const d = new Date(); d.setDate(d.getDate() - i); days.push(d); }
+  const byDay = {};
+  runs.forEach(r => { const k = (r.created_at || "").slice(0, 10); (byDay[k] = byDay[k] || []).push(r); });
+  const week = days.flatMap(d => byDay[dkey(d)] || []).filter(r => !["queued","running","skipped"].includes(r.status));
+  const okN = week.filter(r => ["success","partial"].includes(r.status)).length;
+  $("ovRate").innerHTML = week.length ? `${(okN / week.length * 100).toFixed(1)}<small>%</small>` : "—";
+  const maxN = Math.max(1, ...days.map(d => (byDay[dkey(d)] || []).length));
+  $("ovBars").innerHTML = days.map(d => {
+    const list = byDay[dkey(d)] || [], bad = list.some(r => ["failed","stopped"].includes(r.status));
+    return `<i class="${!list.length ? "zero" : bad ? "bad" : ""}" style="height:${Math.max(6, list.length / maxN * 52)}px"
+      title="${dkey(d)}：${list.length} 次${bad ? "，有失败" : ""}"></i>`;
+  }).join("");
+  $("ovDays").innerHTML = days.map((d, i) => {
+    const list = byDay[dkey(d)] || [];
+    const n = (st) => list.filter(r => st.includes(r.status)).length;
+    const ok = n(["success"]), part = n(["partial"]), bad = n(["failed","stopped"]);
+    const today = i === 6;
+    return `<div class="day ${today ? "today" : ""} ${!list.length && !today ? "empty" : ""}" data-day="${dkey(d)}" title="查看这一天的运行记录">
+      ${bad ? `<span class="flag bad">失败 ${bad}</span>` : today ? '<span class="flag">今天</span>' : ""}
+      <div class="n"><b>${d.getDate()}</b><span>${d.getMonth() + 1} 月<em>${WD[d.getDay()]}</em></span></div>
+      <span class="jchips">${list.length ? [ok && `<span class="jchip ok">完成 ${ok}</span>`, part && `<span class="jchip warn">部分 ${part}</span>`,
+        bad && `<span class="jchip bad">失败 ${bad}</span>`].filter(Boolean).join("") || `<span class="jchip">${list.length} 次</span>`
+        : '<span class="jchip">无任务</span>'}</span>
+    </div>`;
+  }).join("");
+  // ---- 推送
+  const pushes = syncJobs.filter(j => !j.dry_run && !["queued","running"].includes(j.status));
+  const pushOk = pushes.filter(j => j.status === "success").length;
+  $("ovDonut").style.strokeDashoffset = String(138.2 * (1 - (pushes.length ? pushOk / pushes.length : 0)));
+  $("ovDonutLbl").textContent = pushes.length ? `推送成功 ${pushOk}/${pushes.length}` : "推送成功";
+  // ---- 需要处理
+  const stale = active.filter(a => !a.is_fresh);
+  const recentFail = runs.find(r => r.status === "failed");
+  const btn = $("ovHelpBtn");
+  if (stale.length){
+    $("ovHelpT").textContent = "需要登录";
+    $("ovHelpP").textContent = `${stale.map(a => a.name || a.account_id).slice(0, 3).join("、")}${stale.length > 3 ? ` 等 ${stale.length} 个账号` : ""} 登录态失效，定时采集会跳过它们。`;
+    btn.textContent = `去登录 ${stale[0].name || stale[0].account_id}`;
+    btn.onclick = () => openBrowser(stale[0].account_id);
+  } else if (recentFail){
+    $("ovHelpT").textContent = "有采集失败";
+    $("ovHelpP").textContent = `${acctName(recentFail.account_id)} · ${recentFail.label}${recentFail.detail ? "：" + recentFail.detail : ""}`.slice(0, 120);
+    btn.textContent = "查看失败日志";
+    btn.onclick = () => openRunLog(recentFail.run_id);
+  } else {
+    $("ovHelpT").textContent = "一切正常";
+    $("ovHelpP").textContent = "所有账号登录态有效，最近没有失败的采集。需要补数据时直接新建任务。";
+    btn.textContent = "新建采集任务";
+    btn.onclick = () => openTaskDialog(null);
+  }
+  $("ovHelpS").textContent = status.scheduler_alive ? `下次定时采集 ${status.next_collect_daily || "未启用"}` : "调度未启动";
+  // ---- 最近任务
+  const recent = runs.slice(0, 2);
+  $("ovRecentN").textContent = runs.length ? `共 ${runs.length} 条` : "";
+  $("ovRecent").innerHTML = recent.length ? recent.map(r => `
+    <div data-run="${esc(r.run_id)}" title="查看日志">
+      <b>${esc(acctName(r.account_id))}</b>
+      <small>${esc(r.created_at.slice(5, 16))} · ${esc(r.label)}</small>
+      <span class="tag ${RUN_CLS[r.status] || ""}">${esc(r.status_text)}</span>${jobChips(r)}
+    </div>`).join("") : '<div class="muted" style="grid-column:1/-1">还没有运行记录</div>';
+  const weekMore = Math.max(0, runs.filter(r => (r.created_at || "") >= dkey(days[0])).length - recent.length);
+  $("ovMore").innerHTML = weekMore ? `本周还有 <b>${weekMore} 条</b>` : "查看全部运行记录";
+  // ---- 下次运行
+  const nexts = [
+    ["pink", "list", "每日采集 · 交易数据", status.next_collect_daily, "schedule"],
+    ["green", "pie", "每月采集 · 评级", status.next_collect_monthly, "schedule"],
+    ["yellow", "up", "定时补推 · 日表", status.next_daily, "sync-api"],
+  ];
+  $("ovNextN").textContent = status.scheduler_alive ? "调度运行中" : "调度未启动";
+  $("ovNext").innerHTML = nexts.map(([c, ic, t, when, r]) => `
+    <div class="nx ${c} ${when ? "" : "off"}" data-route="${r}" title="${when || "未启用"}">
+      <span class="ic"><svg class="i"><use href="#i-${ic}"/></svg></span><b>${t}</b>
+      <small>${when ? esc(when.slice(5)) + " · " + untilText(when) : "未启用"}</small>
+      <span class="go"><svg class="i"><use href="#i-right"/></svg></span></div>`).join("");
+}
+$("ovRecent").addEventListener("click", (e) => { const d = e.target.closest("[data-run]"); if (d) openRunLog(d.dataset.run); });
+$("ovDays").addEventListener("click", (e) => {
+  const d = e.target.closest("[data-day]"); if (!d) return;
+  $("runSearch").value = ""; $("runFilterAcct").value = ""; runFilter = "all"; go("runs");
+  setTimeout(() => { $("runSearch").value = d.dataset.day.slice(5); renderRuns(); }, 50);
+});
+
+/* ================================================================ 系统设置 */
+async function loadSystem(){
+  let d;
+  try { d = await api("/api/system"); } catch (e){ toast(e.message); return; }
+  const kv = (pairs) => pairs.map(([k, v]) => `<span>${esc(k)}</span><b>${v}</b>`).join("");
+  $("sysSched").textContent = d.scheduler_alive ? "调度运行中" : "调度未启动";
+  $("sysSched").className = "tag " + (d.scheduler_alive ? "ok" : "bad");
+  $("sysBase").innerHTML = kv([["系统", `${esc(d.name)} <span class="muted">v${esc(d.version)}</span>`],
+    ["运行平台", esc(d.platform)], ["Python", esc(d.python)], ["时区", `${esc(d.timezone)}（今天 ${esc(d.today)}）`],
+    ["控制台", `<span class="mono">${esc(d.console.host)}:${d.console.port}</span> · pid ${d.console.pid}`]]);
+  $("sysDbTag").textContent = d.mysql.enabled ? "已启用" : "未启用";
+  $("sysDbTag").className = "tag " + (d.mysql.enabled ? "ok" : "warn");
+  $("sysDb").innerHTML = kv([["连接", `<span class="mono">${esc(d.mysql.dsn)}</span>`], ["表前缀", esc(d.mysql.table_prefix || "（无）")],
+    ["分表策略", d.mysql.strategy === "per_account" ? "每账号一张表" : "所有账号共用表"]]);
+  $("sysBrowserK").innerHTML = "常驻浏览器<br><br>持久化 profile<br><br>登录超时";
+  $("sysBrowserV").innerHTML = `${d.browser.keep_alive ? "开启" : "关闭"}<br><br>${d.browser.persistent ? "开启（同一账号保持设备指纹）" : "关闭"}<br><br>${d.browser.login_timeout} 秒`;
+  $("sysCollect").innerHTML = kv([["请求间隔", `${d.collect.request_interval} 秒`], ["失败重试", `${d.collect.max_retries} 次`],
+    ["接口超时", `${d.collect.timeout} 秒`], ["账号来源", esc(d.collect.account_source)], ["账号数", String(d.collect.accounts)]]);
+  $("sysStore").innerHTML = kv([["网络", esc(d.network)], ["配置文件", `<span class="mono">${esc(d.config_path)}</span>`],
+    ["运行日志", `<span class="mono">${esc(d.runs_dir)}</span>`]]);
+}
+
 /* ================================================================ 通知设置 */
 async function loadSettings(){
   const d = await api("/api/settings"), f = d.feishu || {};
@@ -2460,7 +2756,7 @@ loadAccounts().then(() => {
   loadRuns(); loadStatus();
   // 飞书通知里的链接：?account=xxx 直接打开该账号的浏览器
   const want = new URLSearchParams(location.search).get("account");
-  showRoute(want ? "accounts" : (location.hash.replace(/^#\//, "") || "accounts"));
+  showRoute(want ? "accounts" : (location.hash.replace(/^#\//, "") || "overview"));
   if (want && accounts.some(a => a.account_id === want)) openBrowser(want);
 }).catch(e => toast("加载失败：" + e.message));
 })();

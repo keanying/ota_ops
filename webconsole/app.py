@@ -66,7 +66,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="携程采集控制台",
+    title="OTAOPS · 携程采集控制台",
     description=(
         "HTTP 接口见下方列表。**WebSocket 不在 OpenAPI 里**，"
         "协议说明看 [/api/ws-spec](/api/ws-spec)，"
@@ -1476,6 +1476,37 @@ def _fmt_dt(dt) -> str:
 # =============================================================================
 # 设置 / 飞书
 # =============================================================================
+
+@app.get("/api/system")
+def api_system() -> JSONResponse:
+    """系统设置页：运行环境与关键配置（只读，不含任何密码 / Key）。"""
+    import ctrip
+
+    mc, cc, rc = _cfg.mysql, _cfg.ctrip, _cfg.run
+    return JSONResponse({
+        "name": "OTAOPS",
+        "version": getattr(ctrip, "__version__", ""),
+        "platform": f"{platform.system()} {platform.release()}",
+        "python": platform.python_version(),
+        "config_path": str(_cfg.config_path or ""),
+        "timezone": rc.timezone,
+        "today": datasync.today_of(_cfg).isoformat(),
+        "mysql": {"enabled": mc.enabled, "dsn": mc.dsn_safe(), "table_prefix": mc.table_prefix,
+                  "strategy": mc.table_strategy},
+        "browser": {"stream": STREAM_MODE, "stream_reason": MODE_REASON, "keep_alive": KEEP_ALIVE,
+                    "headless": cc.headless, "persistent": cc.persistent_browser,
+                    "login_timeout": cc.login_timeout, "cookie_ttl_hours": cc.cookie_ttl_hours},
+        "collect": {"request_interval": _cfg.collect.request_interval, "max_retries": _cfg.collect.max_retries,
+                    "timeout": _cfg.collect.timeout, "account_source": cc.account_source,
+                    "accounts": len(cc.accounts)},
+        "network": "采集与推送一律直连，不走代理",
+        "scheduler_alive": bool(_scheduler and _scheduler.is_alive()),
+        "console": {"host": os.environ.get("CONSOLE_HOST", "0.0.0.0"),
+                    "port": int(os.environ.get("CONSOLE_PORT", "8800")),
+                    "pid": os.getpid()},
+        "runs_dir": str(RUNS_DIR),
+    })
+
 
 @app.get("/api/ws-spec", tags=["WebSocket"])
 def api_ws_spec() -> JSONResponse:
