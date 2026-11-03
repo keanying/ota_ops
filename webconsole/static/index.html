@@ -1511,7 +1511,7 @@ function showRoute(r){
   $("pageTabs").innerHTML = (TABS[meta.group] || []).map(([k, t]) =>
     `<button class="${k === r ? "on" : ""}" data-route="${k}">${t}</button>`).join("");
   $("btnNewTask").style.display = meta.group === "tasks" ? "" : "none";   // 只在任务管理里出现
-  document.title = `${meta.title} · OTA数据运营平台`;
+  document.title = "OTA数据运营平台";
   ({overview: () => { loadAccounts(); loadRuns(); loadStatus(); }, accounts: loadAccounts, runs: loadRuns,
     schedule: () => { loadCollectSchedule(); loadStatus(); },
     "sync-tables": loadSync, "sync-api": loadSync, "sync-logs": loadStatus, notify: loadSettings,
