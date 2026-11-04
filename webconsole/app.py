@@ -1604,7 +1604,7 @@ def api_system() -> JSONResponse:
         "network": "采集与推送一律直连，不走代理",
         "scheduler_alive": bool(_scheduler and _scheduler.is_alive()),
         "console": {"host": os.environ.get("CONSOLE_HOST", "0.0.0.0"),
-                    "port": int(os.environ.get("CONSOLE_PORT", "8800")),
+                    "port": int(os.environ.get("CONSOLE_PORT", "8808")),
                     "pid": os.getpid()},
         "runs_dir": str(RUNS_DIR),
     })
