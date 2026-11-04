@@ -2,7 +2,7 @@
 
 启动：
     python -m webconsole            # 或 bash run_console.sh
-然后浏览器打开 http://<服务器IP>:8800
+然后浏览器打开 http://<服务器IP>:8808
 
 提供三件事：
   1. 账号列表与登录态状态（读项目的 config / CookieStore）
@@ -1673,7 +1673,7 @@ def _verify_link(account_id: str) -> str:
     base = (notify.Settings.load().feishu.console_url or "").rstrip("/")
     if not base:
         base = f"http://{os.environ.get('CONSOLE_HOST', '127.0.0.1')}:" \
-               f"{os.environ.get('CONSOLE_PORT', '8800')}"
+               f"{os.environ.get('CONSOLE_PORT', '8808')}"
     return f"{base}/?account={account_id}"
 
 
@@ -2353,7 +2353,7 @@ def main() -> None:
     import uvicorn
 
     host = os.environ.get("CONSOLE_HOST", "0.0.0.0")
-    port = int(os.environ.get("CONSOLE_PORT", "8800"))
+    port = int(os.environ.get("CONSOLE_PORT", "8808"))
     label = {"vnc": "VNC 增量流（有头浏览器）",
              "cdp": "CDP 实时推流（无头浏览器）"}.get(STREAM_MODE, STREAM_MODE)
     print(f"控制台启动：http://{host}:{port}")
