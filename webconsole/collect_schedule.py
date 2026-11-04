@@ -48,6 +48,9 @@ class CollectSchedule:
     monthly_retry_days: int = 7  # 月任务后若干天内，评级仍缺数则每天补采；0=不补
     account_ids: list[str] = field(default_factory=list)   # 空=全部启用的账号
     skip_stale_login: bool = True
+    # 到点先打开浏览器刷新登录态：profile 里还登着就直接保存；掉了就用配置里的账号密码自动登录，
+    # 要滑块 / 短信时发飞书通知等人处理。每天只跑一次、浏览器平时是关的，不刷新的话登录态基本都过期了
+    refresh_login: bool = True
     # 定时采哪几张表：kylin（交易，日任务）/ rating / score（评级，月任务）。
     # 页面上按表勾选；日 / 月任务开不开由这里推出来，不再单独维护两个开关。
     jobs: list[str] = field(default_factory=lambda: list(ALL_JOBS))
@@ -80,6 +83,7 @@ class CollectSchedule:
             monthly_retry_days=max(0, min(27, int(raw.get("monthly_retry_days", 7) or 0))),
             account_ids=[str(x) for x in (raw.get("account_ids") or []) if str(x).strip()],
             skip_stale_login=bool(raw.get("skip_stale_login", True)),
+            refresh_login=bool(raw.get("refresh_login", True)),
         )
 
     def to_dict(self) -> dict:
@@ -134,14 +138,20 @@ def in_retry_window(cs: CollectSchedule, today: date) -> bool:
     return cs.monthly_day < today.day <= cs.monthly_day + cs.monthly_retry_days
 
 
-def _login_skip(store: CookieStore, cs: CollectSchedule, account_id: str) -> str:
-    if not cs.skip_stale_login:
-        return ""
+def login_issue(store: CookieStore, account_id: str) -> str:
+    """登录态现在有什么问题（只看本地文件和时间，不发请求）。"""
     if not store.exists(account_id):
         return "从未登录"
     if not store.is_fresh(account_id):
         return "登录态已过期"
     return ""
+
+
+def _login_skip(store: CookieStore, cs: CollectSchedule, account_id: str) -> str:
+    # 开了「到点先刷新登录态」就不在这里跳过：真正跑的时候先刷新，刷新失败才跳过
+    if not cs.skip_stale_login or cs.refresh_login:
+        return ""
+    return login_issue(store, account_id)
 
 
 def plan(cfg, cs: CollectSchedule, job: str, today: date | None = None,
@@ -167,6 +177,8 @@ def plan(cfg, cs: CollectSchedule, job: str, today: date | None = None,
             if not missing:
                 continue                      # 上月已齐，不打扰
             item["missing"] = missing
+        item["login"] = login_issue(store, a.account_id)
+        item["refresh"] = cs.refresh_login
         item["skip"] = _login_skip(store, cs, a.account_id)
         if not item["skip"]:
             if job == "daily":

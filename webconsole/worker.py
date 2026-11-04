@@ -66,6 +66,7 @@ class BrowserWorker(threading.Thread):
         self.cmds: queue.Queue[dict] = queue.Queue()
         self.frames: queue.Queue[dict] = queue.Queue(maxsize=3)  # 只留最新几帧
         self.events: queue.Queue[dict] = queue.Queue()
+        self.last_login: dict | None = None     # 最近一次登录流程的最终结果
 
         # 注意：不能叫 _stop —— Thread 内部有个同名方法，覆盖后 join() 会崩
         self._stopping = threading.Event()
@@ -609,8 +610,12 @@ class BrowserWorker(threading.Thread):
                              "phone": payload.get("phone", ""),
                              "at": datetime.now().strftime("%H:%M:%S")})
             return
-        self.events.put({"type": "login", "stage": stage,
-                         "at": datetime.now().strftime("%H:%M:%S"), **payload})
+        evt = {"type": "login", "stage": stage,
+               "at": datetime.now().strftime("%H:%M:%S"), **payload}
+        if stage in ("success", "failed", "aborted"):
+            # 事件队列可能被页面上的 WebSocket 读走；定时刷新登录态时靠这个拿最终结果
+            self.last_login = evt
+        self.events.put(evt)
 
     def _fill_sms_direct(self, code: str) -> None:
         from .notify import Settings

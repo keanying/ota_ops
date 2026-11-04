@@ -102,6 +102,8 @@ if KEEP_ALIVE and getattr(_cfg.ctrip, "cdp_port", 0) <= 0:
 START_ACK_WAIT = float(os.environ.get("CONSOLE_START_ACK", "6"))
 # 登录前确保浏览器就绪的上限（秒）。新账号首次要初始化 profile，给足时间。
 LOGIN_BROWSER_WAIT = float(os.environ.get("CONSOLE_LOGIN_WAIT", "120"))
+# 定时采集前刷新登录态：遇到滑块 / 短信时等人处理的上限（秒）
+REFRESH_LOGIN_TIMEOUT = int(os.environ.get("CONSOLE_REFRESH_LOGIN_TIMEOUT", "600"))
 
 
 def _account_index(account_id: str) -> int:
@@ -1168,6 +1170,7 @@ def _run_scheduled_collect(job: str) -> None:
         return
 
     source = "catchup" if job == "catchup" else "schedule"
+    _prepare_logins(items, cs, title)
     tasks = _queue_items(items, title, source)
     if tasks:
         _sync_log("info", f"定时{title}：{len(tasks)} 个账号排队，逐个执行")
@@ -1177,6 +1180,101 @@ def _run_scheduled_collect(job: str) -> None:
             _sync_log({"success": "info", "partial": "warn"}.get(sm["status"], "error"),
                       f"{t.account_id} {t.label} {sm['status_text']}"
                       f"{('（' + sm['detail'] + '）') if sm['detail'] else ''}")
+
+
+def _refresh_login(account_id: str) -> tuple[bool, str]:
+    """打开浏览器刷新一个账号的登录态，结束后关掉浏览器（本来就开着的不关）。
+
+    走的是控制台「开始登录」同一套流程（LoginFlow）：
+      profile 里还是登录态 → 直接保存 storage_state，不碰账号密码；
+      已经掉了 → 用配置里的账号密码自动登录；
+      要滑块 / 短信 → 发飞书通知，链接打开就是这个账号的远程浏览器，最多等 REFRESH_LOGIN_TIMEOUT 秒。
+    """
+    global _cfg
+    busy = _tasks.get(account_id)
+    if busy and busy.running:
+        return False, "该账号有采集任务正在运行"
+    old = _workers.get(account_id)
+    was_open = bool(old and old.alive)
+    if old and old.alive and old.login_active:
+        return False, "该账号正在页面上手动登录"
+    ok, msg = _ensure_browser(account_id)
+    worker = _workers.get(account_id)
+    if not ok or worker is None:
+        if not was_open:
+            _close_browser(account_id)
+        return False, f"浏览器启动失败：{msg}"
+    with contextlib.suppress(queue.Empty):
+        while True:
+            worker.events.get_nowait()          # 清掉启动过程的旧事件
+    worker.last_login = None
+    worker.submit({"type": "login_start", "timeout": REFRESH_LOGIN_TIMEOUT,
+                   "sms_wait": min(300, REFRESH_LOGIN_TIMEOUT), "persist": False})
+    name = _account_name(account_id)
+    result: dict | None = None
+    deadline = time.monotonic() + REFRESH_LOGIN_TIMEOUT + 60
+    try:
+        while time.monotonic() < deadline:
+            try:
+                evt = worker.events.get(True, 0.5)
+            except queue.Empty:
+                if worker.last_login:            # 事件被页面上的连接读走了，直接看结果
+                    result = worker.last_login
+                    break
+                if not worker.alive:
+                    result = {"stage": "failed", "message": "浏览器意外退出"}
+                    break
+                continue
+            kind = evt.get("type")
+            if kind == "config_changed":
+                with contextlib.suppress(Exception):
+                    _cfg = load_config(os.environ.get("CTRIP_CONFIG") or None, validate=False)
+            elif kind in ("notify_captcha", "notify_sms"):
+                reason = (f"手机短信验证码{('（' + evt.get('phone') + '）') if evt.get('phone') else ''}"
+                          if kind == "notify_sms" else (evt.get("hint") or "滑块/图形验证"))
+                sent = False
+                with contextlib.suppress(Exception):
+                    sent, _ = notify.notify_verify_needed(
+                        account_id, name, _verify_link(account_id), f"定时采集前自动登录：{reason}")
+                _sync_log("warn", f"{account_id} 自动登录需要人工处理（{reason}），"
+                                  + ("已发飞书通知" if sent else "飞书通知未发出")
+                                  + f"，最多等 {REFRESH_LOGIN_TIMEOUT // 60} 分钟")
+            elif kind == "login" and evt.get("stage") in ("success", "failed", "aborted"):
+                result = evt
+                break
+        else:
+            worker.submit({"type": "login_abort"})
+            result = {"stage": "failed", "message": f"等待人工验证超时（{REFRESH_LOGIN_TIMEOUT}s）"}
+    finally:
+        if not was_open:
+            _close_browser(account_id)            # 释放 profile，采集进程要用
+    ok = (result or {}).get("stage") == "success"
+    return ok, (result or {}).get("message") or ("登录态已刷新" if ok else "登录失败")
+
+
+def _prepare_logins(items: list[dict], cs: csched.CollectSchedule, title: str) -> None:
+    """定时采集到点：逐个账号先打开浏览器刷新并保存登录态。
+
+    每天只跑一次、浏览器平时关着，到点时登录态基本都已过期；先刷新再采，
+    刷新失败的账号记为跳过（_queue_items 会发飞书通知）。
+    """
+    if not cs.refresh_login:
+        return
+    for item in items:
+        if item.get("skip"):
+            continue
+        aid = item["account_id"]
+        _sync_log("info", f"定时{title}：{aid} 打开浏览器刷新登录态")
+        try:
+            ok, msg = _refresh_login(aid)
+        except Exception as exc:  # noqa: BLE001
+            ok, msg = False, f"刷新异常：{exc}"
+        if ok:
+            _sync_log("info", f"{aid} 登录态已刷新：{msg}")
+        elif cs.skip_stale_login:
+            item["skip"] = f"登录态刷新失败：{msg}"
+        else:
+            _sync_log("warn", f"{aid} 登录态刷新失败（仍尝试采集）：{msg}")
 
 
 def _queue_items(items: list[dict], title: str, source: str) -> list["CollectTask"]:
@@ -1279,13 +1377,17 @@ async def api_collect_catchup_now() -> JSONResponse:
     todo = [i for i in items if not i["skip"]]
     if not items:
         return JSONResponse({"ok": True, "message": "上月评级各账号都已采齐，无需补采"})
-    tasks = _queue_items(items, "评级补采", "catchup")
-    threading.Thread(target=run_batch, args=(tasks,), name="catchup-now",
-                     daemon=True).start()
+
+    def go() -> None:
+        _prepare_logins(items, cs, "评级补采")
+        run_batch(_queue_items(items, "评级补采", "catchup"))
+
+    threading.Thread(target=go, name="catchup-now", daemon=True).start()
+    note = "，先逐个刷新登录态" if cs.refresh_login else ""
     return JSONResponse({"ok": True, "message":
-                         f"已开始补采 {len(todo)} 个账号，"
-                         f"{len(items) - len(todo)} 个因登录态跳过",
-                         "items": items, "runs": [t.summary() for t in tasks]})
+                         f"已开始补采 {len(todo)} 个账号{note}"
+                         + (f"，{len(items) - len(todo)} 个因登录态跳过" if len(items) > len(todo) else ""),
+                         "items": items})
 
 
 # =============================================================================
