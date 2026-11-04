@@ -1036,7 +1036,8 @@
           </div>
         </div>
         <div class="savebar">
-          <label class="check" style="margin:0"><input type="checkbox" id="csSkipStale" checked> 登录态失效时跳过并发飞书通知</label>
+          <label class="check" style="margin:0" title="每天只跑一次、浏览器平时关着，到点时登录态基本都过期了。开着时：先打开浏览器，还登着就直接保存登录态；掉了就用配置里的账号密码自动登录，要滑块 / 短信时发飞书通知"><input type="checkbox" id="csRefresh" checked> 到点先打开浏览器刷新登录态</label>
+          <label class="check" style="margin:0"><input type="checkbox" id="csSkipStale" checked> 刷新失败时跳过并发飞书通知</label>
           <span class="grow"></span>
           <span class="note" id="csNext" style="margin:0">下次运行：—</span>
           <button class="btn btn--primary" id="btnCsSave">保存定时设置</button>
@@ -2495,6 +2496,7 @@ async function loadCollectSchedule(){
   $("csMonthAt").value = d.monthly_at || "03:00";
   $("csMonthRetry").value = d.monthly_retry_days ?? 7;
   $("csSkipStale").checked = d.skip_stale_login !== false;
+  $("csRefresh").checked = d.refresh_login !== false;
   $("csNext").textContent = `下次运行：日 ${d.next_daily || "未启用"} · 月 ${d.next_monthly || "未启用"}`;
   $("csCatchup").textContent = d.catchup
     ? `${d.catchup}（当前目标月份 ${d.target_month}）`
@@ -2533,6 +2535,7 @@ $("btnCsSave").onclick = async () => {
       monthly_day: parseInt($("csMonthDay").value, 10) || 6, monthly_at: $("csMonthAt").value,
       monthly_retry_days: Math.max(0, parseInt($("csMonthRetry").value, 10) || 0),
       skip_stale_login: $("csSkipStale").checked,
+      refresh_login: $("csRefresh").checked,
     });
     toast(`定时采集已保存，下次：日 ${r.next_daily || "未启用"} · 月 ${r.next_monthly || "未启用"}`);
     loadCollectSchedule();
@@ -2555,7 +2558,9 @@ $("btnCsPreview").onclick = async () => {
       const lines = d.reason ? [`<span style="color:var(--warn)">${esc(d.reason)}</span>`]
         : !d.items.length ? [job === "catchup" ? `上月（${esc(d.month)}）评级都已采齐` : "没有符合条件的账号"]
         : d.items.map(it => `<b>${esc(acctName(it.account_id))}</b>：` + (it.skip
-            ? `<span style="color:var(--warn)">跳过（${esc(it.skip)}）</span>` : `采集 ${esc(describeParams(it.params))}`));
+            ? `<span style="color:var(--warn)">跳过（${esc(it.skip)}）</span>`
+            : (it.refresh ? `<span class="muted">先刷新登录态${it.login ? "（当前" + esc(it.login) + "）" : ""} → </span>` : "")
+              + `采集 ${esc(describeParams(it.params))}`));
       out.push(`<div class="section-t">${JOB_NAMES[job]}</div>` + lines.map(l => `<div style="font-size:13px;padding:2px 0">${l}</div>`).join(""));
     }
     box.innerHTML = out.join("");
