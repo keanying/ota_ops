@@ -160,7 +160,7 @@
     "monthly_day": 1,
     "monthly_at": "00:10",
     "skip_stale_login": true,
-    "monthly_retry_days": 1,
+    "monthly_retry_days": 2,
     "jobs": [
       "kylin",
       "score"

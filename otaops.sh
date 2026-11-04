@@ -27,7 +27,7 @@ cd "$ROOT"
 [[ -f "$ROOT/console.env" ]] && { set -a; . "$ROOT/console.env"; set +a; }
 
 export CONSOLE_HOST="${CONSOLE_HOST:-127.0.0.1}"
-export CONSOLE_PORT="${CONSOLE_PORT:-8800}"
+export CONSOLE_PORT="${CONSOLE_PORT:-8008}"
 START_WAIT="${START_WAIT:-40}"      # 启动后最多等多少秒接口可用
 STOP_WAIT="${STOP_WAIT:-20}"        # 停止时最多等多少秒正常退出，超时强杀
 

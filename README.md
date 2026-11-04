@@ -36,7 +36,7 @@ python -m ctrip.cli run --start-date 2025-01-01 --start-month 2025-01 --sink bot
 uv venv .venv && source .venv/bin/activate
 uv pip install -e .
 playwright install chromium
-
+PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright python -m playwright install chromium
 # 2. 准备配置
 cp config/config.example.yaml config/config.yaml
 cp .env.example .env && vim .env          # 填入账号密码、MySQL 连接信息
