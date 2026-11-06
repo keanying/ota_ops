@@ -646,6 +646,55 @@
   .content,.xt-wrap{scrollbar-width:none}
   .content::-webkit-scrollbar,.xt-wrap::-webkit-scrollbar{display:none}
 
+  /* ---- 定时任务列表 ---- */
+  .sec-hd{display:flex;align-items:center;gap:10px;margin:4px 0 12px}
+  .sec-hd h2{margin:0;font-size:16px;font-weight:800}
+  .sec-hd small{color:var(--muted);font-size:12.5px}
+  .st-next b{display:block;font-weight:600;font-size:13.5px}
+  .st-next small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .xt tr.off td:not(.acts-col):not(.sw){opacity:.5}
+  .card.flash{animation:flash 1.6s ease}
+  @keyframes flash{0%,40%{box-shadow:0 0 0 3px var(--lime),var(--soft-shadow)}100%{box-shadow:var(--soft-shadow)}}
+
+  /* ---- 日期 / 月份 / 时间选择器（替代浏览器自带的英文控件） ---- */
+  input[data-pick]{cursor:pointer;caret-color:transparent;padding-right:34px !important;text-align:left !important;
+    background-repeat:no-repeat;background-position:right 11px center;background-size:15px 15px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A8F99' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M16 3v4M8 3v4M3 10h18'/%3E%3C/svg%3E")}
+  input[data-pick="time"]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A8F99' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E")}
+  input[data-pick].picking{border-color:#B9C94A;box-shadow:0 0 0 3px rgba(217,242,74,.35)}
+  .field input[data-pick="month"],.field input[data-pick="date"]{flex:0 0 160px;width:160px}
+  .field input[data-pick="time"]{flex:0 0 120px;width:120px}
+  .pk{position:fixed;z-index:120;background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(28,31,35,.18),0 0 0 1px rgba(28,31,35,.06);
+    padding:12px;width:272px;font-size:13px;user-select:none}
+  .pk-hd{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+  .pk-hd b{flex:1;text-align:center;font-size:14px;font-weight:700}
+  .pk-nav{width:28px;height:28px;border:0;border-radius:8px;background:none;cursor:pointer;color:var(--ink-2);display:grid;place-items:center}
+  .pk-nav:hover{background:#F2F4F6}
+  .pk-nav svg{width:15px;height:15px}
+  .pk-grid{display:grid;gap:4px}
+  .pk-grid.m{grid-template-columns:repeat(4,1fr)}
+  .pk-grid.d{grid-template-columns:repeat(7,1fr)}
+  .pk-wk{text-align:center;color:var(--muted);font-size:11.5px;padding:2px 0 4px}
+  .pk-c{border:0;background:none;border-radius:9px;height:34px;cursor:pointer;font-size:13px;color:var(--ink);font-weight:500}
+  .pk-grid.d .pk-c{height:32px}
+  .pk-c:hover:not(:disabled){background:#F2F4F6}
+  .pk-c.dim{color:#B6BAC2}
+  .pk-c.now{box-shadow:inset 0 0 0 1px #C3DC33}
+  .pk-c.on{background:var(--lime) !important;color:#161616;font-weight:700}
+  .pk-c:disabled{color:#D3D6DB;cursor:not-allowed}
+  .pk-ft{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid #EEF0F3}
+  .pk-ft button{border:0;background:#F4F6F8;border-radius:12px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink)}
+  .pk-ft button:hover{background:var(--lime)}
+  .pk-ft .grow{flex:1}
+  .pk-ft .ok{background:var(--dark);color:#fff}
+  .pk-ft .ok:hover{background:#000}
+  .pk.t{width:196px}
+  .pk-cols{display:grid;grid-template-columns:1fr 1fr;gap:6px;height:220px}
+  .pk-col{overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:2px;padding-bottom:180px}
+  .pk-col::-webkit-scrollbar{display:none}
+  .pk-col .pk-c{flex:none;height:30px}
+  .pk-ch{display:grid;grid-template-columns:1fr 1fr;gap:6px;text-align:center;color:var(--muted);font-size:11.5px;margin-bottom:6px}
+
   /* ---- 按钮 / 筛选：胶囊 ---- */
   .btn{border-radius:22px}
   .btn--sm{border-radius:16px}
@@ -789,6 +838,7 @@
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
   <symbol id="i-fold" viewBox="0 0 24 24"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></symbol>
   <symbol id="i-caret" viewBox="0 0 10 10"><path d="M3 1l5 4-5 4z"/></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
@@ -984,10 +1034,19 @@
             <span class="tag" id="csTag">—</span>
           </div>
         </div>
+        <div class="sec-hd"><h2>定时任务</h2><small>所有定时都在这里；点「编辑」跳到对应的设置</small>
+          <span class="grow"></span><button class="btn btn--sm" id="btnStRefresh"><svg class="i"><use href="#i-redo"/></svg>刷新</button></div>
+        <div class="xt-wrap" style="margin-bottom:22px">
+          <table class="xt">
+            <thead><tr><th>任务</th><th>内容</th><th>账号</th><th>下次运行</th><th>上次运行</th><th>启用</th>
+              <th class="acts-col">操作</th></tr></thead>
+            <tbody id="stRows"></tbody>
+          </table>
+        </div>
         <div class="card">
           <div class="card-hd"><h2>采集哪些表</h2><small>勾了的表才会定时采集</small>
-            <div class="acts"><span class="note" style="margin:0">推送哪些表在
-              <a href="#/sync-tables" style="color:var(--primary-d);font-weight:600">远程同步 → 推送表与字段</a> 里设置</span></div></div>
+            <div class="acts"><a class="btn btn--sm" href="#/sync-tables" title="推送哪些表、哪些字段在远程同步里设置">推送设置
+              <svg class="i" style="width:13px;height:13px"><use href="#i-right"/></svg></a></div></div>
           <div class="card-bd">
             <div class="tiles" id="csTables">
               <button type="button" class="tile" data-job="kylin" aria-pressed="true">
@@ -1004,7 +1063,7 @@
             <div class="card-hd"><h2>日任务</h2><small>交易数据</small>
               <div class="acts"><span class="tag" id="csDayTag">—</span></div></div>
             <div class="card-bd">
-              <div class="field"><label>每天</label><input id="csDailyAt" type="time" value="02:30"></div>
+              <div class="field"><label>每天</label><input id="csDailyAt" data-pick="time" readonly value="02:30"></div>
               <div class="field"><label>回补</label>
                 <input class="num" id="csDailyDays" type="number" min="1" max="365" value="3">
                 <span class="unit">天，覆盖延迟产出的数据（到昨天为止）</span></div>
@@ -1016,7 +1075,7 @@
             <div class="card-bd">
               <div class="field"><label>每月</label>
                 <input class="num" id="csMonthDay" type="number" min="1" max="28" value="6">
-                <span class="unit">号</span><input id="csMonthAt" type="time" value="03:00"></div>
+                <span class="unit">号</span><input id="csMonthAt" data-pick="time" readonly value="03:00"></div>
               <div class="field"><label>缺数补采</label>
                 <input class="num" id="csMonthRetry" type="number" min="0" max="27" value="7">
                 <span class="unit">天，0 = 不补</span></div>
@@ -1082,10 +1141,10 @@
               <p class="note" style="margin:-6px 0 14px 25px">只推那一次采集的账号和时间窗口；部分完成也推已入库的部分。</p>
               <div class="section-t">定时补推（兜底，补推之前没推成功的）</div>
               <div class="field"><label><input type="checkbox" id="syDaily" style="accent-color:var(--primary)"> 每天日表</label>
-                <input id="syDailyAt" type="time" value="03:30"></div>
+                <input id="syDailyAt" data-pick="time" readonly value="03:30"></div>
               <div class="field"><label><input type="checkbox" id="syMonthly" style="accent-color:var(--primary)"> 每月月表</label>
                 <input class="num" id="syMonthDay" type="number" min="1" max="28" value="5"><span class="unit">号</span>
-                <input id="syMonthAt" type="time" value="04:00"></div>
+                <input id="syMonthAt" data-pick="time" readonly value="04:00"></div>
               <p class="note" id="syNext">下次运行：—</p>
             </div>
           </div>
@@ -1311,8 +1370,8 @@
           <input class="num" id="tDays" type="number" min="1" max="800" value="3">
           <span class="unit">天，到昨天为止（T+1）</span></div>
         <div id="tRangeRow" style="display:none">
-          <div class="field"><label>起始日期</label><input id="tStart" type="date"></div>
-          <div class="field"><label>截止日期</label><input id="tEnd" type="date"></div>
+          <div class="field"><label>起始日期</label><input id="tStart" data-pick="date" readonly placeholder="选择日期"></div>
+          <div class="field"><label>截止日期</label><input id="tEnd" data-pick="date" readonly placeholder="选择日期"></div>
           <p class="note" style="margin:-6px 0 12px 102px">长区间会自动按 30 天分批。</p>
         </div>
       </div>
@@ -1323,9 +1382,9 @@
             <button aria-pressed="true" data-v="one">单月</button>
             <button aria-pressed="false" data-v="range">月份区间</button>
           </div></div>
-        <div class="field" id="tOneRow"><label></label><input id="tMonthVal" type="month"><span class="unit">默认上个月</span></div>
+        <div class="field" id="tOneRow"><label></label><input id="tMonthVal" data-pick="month" readonly><span class="unit">默认上个月</span></div>
         <div class="field" id="tMRangeRow" style="display:none"><label></label>
-          <input id="tMStart" type="month"><span class="unit">至</span><input id="tMEnd" type="month"></div>
+          <input id="tMStart" data-pick="month" readonly><span class="unit">至</span><input id="tMEnd" data-pick="month" readonly></div>
         <p class="note" style="margin:-6px 0 12px 102px">月初目的地评级常常还没出上月数据，会显示「部分完成」，已采到的照常入库推送。</p>
       </div>
       <details class="more">
@@ -2191,7 +2250,7 @@ function renderRuns(){
     ["failed","失败",base.filter(groups.failed).length],["skipped","跳过",base.filter(groups.skipped).length]],
     runFilter, (v) => { runFilter = v; runPage = 1; renderRuns(); });
   const list = base.filter(groups[runFilter]).filter(r => !q ||
-    [r.label, r.detail, r.account_id, acctName(r.account_id), r.created_at].some(x => String(x || "").toLowerCase().includes(q)));
+    [r.label, r.detail, r.account_id, acctName(r.account_id), r.created_at, SRC[r.source]].some(x => String(x || "").toLowerCase().includes(q)));
   const size = parseInt($("runPageSize").value, 10) || 20, pages = Math.max(1, Math.ceil(list.length / size));
   runPage = Math.min(runPage, pages);
   const shown = list.slice((runPage - 1) * size, runPage * size);
@@ -2403,6 +2462,12 @@ function openTaskDialog(preselect){
   // 月份默认上个月（评级只对上月及更早有数据），单月和区间的起止都预先填好，不能选到本月及以后
   const lm = lastMonth();
   ["tMonthVal", "tMStart", "tMEnd"].forEach(id => { $(id).value = lm; $(id).max = lm; });
+  // 交易数据按天、T+1 产出：日期最晚到昨天；没选过时默认最近 7 天
+  const dd = (n) => { const d = new Date(); d.setDate(d.getDate() - n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  ["tStart", "tEnd"].forEach(id => { $(id).max = dd(1); });
+  if (!$("tEnd").value) $("tEnd").value = dd(1);
+  if (!$("tStart").value) $("tStart").value = dd(7);
   syncTaskSections();
   updateTaskSummary();
   openModal("mTask");
@@ -2485,6 +2550,82 @@ $("btnTaskRun").onclick = async () => {
 };
 
 /* ================================================================ 定时采集 */
+/* ---- 定时任务列表 ---- */
+const ST_ICON = {"collect-daily": ["list", "c7"], "collect-monthly": ["pie", "c4"], "collect-catchup": ["redo", "c6"],
+                 "sync-daily": ["up", "c3"], "sync-monthly": ["up", "c5"]};
+let stTasks = [];
+async function loadScheduleTasks(){
+  try { stTasks = (await api("/api/schedule/tasks")).tasks || []; } catch (e){ stTasks = []; }
+  renderScheduleTasks();
+}
+function lastText(t){
+  const l = t.last || {};
+  if (!l.at) return '<span class="muted">还没运行过</span>';
+  let tags;
+  if (t.group === "sync"){
+    const cls = {success: "ok", failed: "bad", running: "info", queued: "info"}[l.status] || "";
+    const txt = {success: `完成 · ${l.rows} 行`, failed: "有失败", running: "推送中", queued: "排队中"}[l.status] || l.status;
+    tags = `<span class="jchip ${cls}" title="${esc(l.error || "")}">${esc(txt)}</span>`;
+  } else {
+    tags = [l.running && `<span class="jchip info">运行中<b>${l.running}</b></span>`,
+            l.success && `<span class="jchip ok">完成<b>${l.success}</b></span>`,
+            l.partial && `<span class="jchip warn">部分<b>${l.partial}</b></span>`,
+            l.failed && `<span class="jchip bad">失败<b>${l.failed}</b></span>`,
+            l.skipped && `<span class="jchip">跳过<b>${l.skipped}</b></span>`].filter(Boolean).join("");
+  }
+  return `<div class="st-next"><b>${esc(l.at.slice(5))}</b></div><span class="jchips" style="margin-top:4px">${tags}</span>`;
+}
+function renderScheduleTasks(){
+  $("stRows").innerHTML = stTasks.length ? stTasks.map(t => {
+    const [ic, cl] = ST_ICON[t.key] || ["grid", "c0"];
+    const nextAt = t.enabled && t.next ? t.next : "";
+    return `<tr data-id="${t.key}" class="${t.enabled ? "" : "off"}">
+      <td class="who"><div class="nm">${sqIcon(ic, cl)}<div><b>${esc(t.name)}</b><small>${esc(t.rule)}</small></div></div></td>
+      <td class="wrap"><span class="jchips" style="margin:0">${t.tables.map(x => `<span class="jchip${x.startsWith("（") ? "" : " info"}">${esc(x)}</span>`).join("")}</span></td>
+      <td>${esc(t.accounts)}</td>
+      <td><div class="st-next">${nextAt ? `<b>${esc(nextAt.slice(5))}</b><small>${esc(untilText(nextAt))}</small>`
+        : `<span class="muted">${t.enabled ? "—" : "已停用"}</span>`}</div></td>
+      <td>${lastText(t)}</td>
+      <td class="sw"><label class="switch" title="${t.enabled ? "停用" : "启用"}这个定时任务"><input type="checkbox" data-f="on" ${t.enabled ? "checked" : ""}><span></span></label></td>
+      <td class="acts-col"><span class="ibtns">
+        ${IB("run", "play", "立即运行一次（不影响下次定时）", "solid", !t.enabled)}
+        ${IB("edit", "pen", "编辑设置")}
+        ${IB("logs", "eye", t.group === "sync" ? "推送记录" : "运行记录", "dark")}
+      </span></td></tr>`;
+  }).join("") : EMPTY_ROW(7, "读取定时任务失败");
+}
+$("btnStRefresh").onclick = () => { loadScheduleTasks(); toast("已刷新"); };
+$("stRows").addEventListener("change", async (e) => {
+  const sw = e.target.closest('[data-f="on"]'); if (!sw) return;
+  const key = sw.closest("tr").dataset.id;
+  try {
+    const r = await post(`/api/schedule/tasks/${key}/toggle`, {on: sw.checked});
+    toast(r.message);
+    if (key.startsWith("collect-")) await loadCollectSchedule(); else loadSync();
+    loadScheduleTasks(); loadStatus();
+  } catch (err){ sw.checked = !sw.checked; toast(err.message); }
+});
+$("stRows").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-act]"); if (!b || b.disabled) return;
+  const t = stTasks.find(x => x.key === b.closest("tr").dataset.id); if (!t) return;
+  if (b.dataset.act === "run"){
+    const ok = await askConfirm({title: `立即运行「${t.name}」？`, ok: "立即运行",
+      lead: "按当前设置马上跑一次，不影响下次定时。",
+      rows: [["规则", t.rule], ["内容", t.tables.join("、")], ["账号", t.accounts], ["下次定时", t.next || "—"]],
+      note: t.group === "collect" ? "采集前会先打开浏览器刷新登录态（如果开了这个选项）。" : ""});
+    if (!ok) return;
+    try { const r = await post(`/api/schedule/tasks/${t.key}/run`); toast(r.message); setTimeout(loadScheduleTasks, 1500); }
+    catch (err){ toast(err.message); }
+  } else if (b.dataset.act === "edit"){
+    if (t.edit === "sync-api") return go("sync-api");
+    const card = $(t.edit); card.scrollIntoView({behavior: "smooth", block: "center"});
+    card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash");
+  } else if (b.dataset.act === "logs"){
+    if (t.runs === "sync") return go("sync-logs");
+    $("runSearch").value = t.runs === "catchup" ? "补采" : "定时"; go("runs");
+  }
+});
+
 async function loadCollectSchedule(){
   const d = await api("/api/collect/schedule");
   $("csEnabled").checked = !!d.enabled;
@@ -2505,6 +2646,7 @@ async function loadCollectSchedule(){
   $("csTag").textContent = on ? "已启用" : (d.enabled ? "没勾任何表" : "未启用");
   $("csTag").className = "tag " + (on ? "ok" : (d.enabled ? "warn" : ""));
   paintScheduleTables();
+  loadScheduleTasks();
 }
 const csJobs = () => [...$("csTables").querySelectorAll('.tile[aria-pressed="true"]')].map(t => t.dataset.job);
 function paintScheduleTables(){
@@ -3171,6 +3313,131 @@ loadAccounts().then(() => {
   showRoute(want ? "accounts" : (location.hash.replace(/^#\//, "") || "overview"));
   if (want && accounts.some(a => a.account_id === want)) openBrowser(want);
 }).catch(e => toast("加载失败：" + e.message));
+})();
+
+/* ================================================================ 日期 / 月份 / 时间选择器
+   给 input[data-pick=date|month|time] 用：值的格式和浏览器原生控件一样（2026-11-04 / 2026-10 / 00:10），
+   读写 .value 的代码不用改；选完会触发 input + change 事件。min / max 属性照常生效。 */
+const Picker = (() => {
+  let pop = null, el = null, view = null;
+  const pad = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const ym = (y, m) => `${y}-${pad(m)}`;
+  const chev = (d) => `<svg class="i"><use href="#i-${d}"/></svg>`;
+  const ok = (v) => (!el.min || v >= el.min) && (!el.max || v <= el.max);
+
+  function close(){ if (pop){ pop.remove(); pop = null; } if (el) el.classList.remove("picking"); el = null; }
+  function set(v, keep){
+    el.value = v;
+    el.dispatchEvent(new Event("input", {bubbles: true}));
+    el.dispatchEvent(new Event("change", {bubbles: true}));
+    if (!keep) close(); else render();
+  }
+  function place(){
+    // body 有整体缩放（zoom）：坐标换算回缩放后的 CSS 像素
+    const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    const r = el.getBoundingClientRect(), vw = innerWidth / z, vh = innerHeight / z;
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    let left = r.left / z, top = r.bottom / z + 6;
+    if (left + w > vw - 8) left = vw - w - 8;
+    if (top + h > vh - 8) top = r.top / z - h - 6;
+    pop.style.left = Math.max(8, left) + "px"; pop.style.top = Math.max(8, top) + "px";
+  }
+  function render(){
+    const kind = el.dataset.pick, v = el.value;
+    let html = "";
+    if (kind === "month"){
+      const cur = v ? v.split("-").map(Number) : null, now = new Date();
+      html = `<div class="pk-hd"><button class="pk-nav" data-nav="-1">${chev("back")}</button><b>${view.y} 年</b>
+        <button class="pk-nav" data-nav="1">${chev("right")}</button></div><div class="pk-grid m">` +
+        Array.from({length: 12}, (_, i) => {
+          const val = ym(view.y, i + 1);
+          const cls = [cur && cur[0] === view.y && cur[1] === i + 1 ? "on" : "",
+                       view.y === now.getFullYear() && i === now.getMonth() ? "now" : ""].join(" ");
+          return `<button class="pk-c ${cls}" data-v="${val}" ${ok(val) ? "" : "disabled"}>${i + 1} 月</button>`;
+        }).join("") + `</div><div class="pk-ft">${quick([["上个月", -1], ["本月", 0]], "m")}</div>`;
+    } else if (kind === "date"){
+      const first = new Date(view.y, view.m, 1), start = new Date(first);
+      start.setDate(1 - ((first.getDay() + 6) % 7));          // 周一开头
+      const today = ymd(new Date());
+      html = `<div class="pk-hd"><button class="pk-nav" data-nav="-1">${chev("back")}</button><b>${view.y} 年 ${view.m + 1} 月</b>
+        <button class="pk-nav" data-nav="1">${chev("right")}</button></div><div class="pk-grid d">` +
+        "一二三四五六日".split("").map(w => `<span class="pk-wk">${w}</span>`).join("") +
+        Array.from({length: 42}, (_, i) => {
+          const d = new Date(start); d.setDate(start.getDate() + i);
+          const val = ymd(d);
+          const cls = [val === v ? "on" : "", val === today ? "now" : "", d.getMonth() !== view.m ? "dim" : ""].join(" ");
+          return `<button class="pk-c ${cls}" data-v="${val}" ${ok(val) ? "" : "disabled"}>${d.getDate()}</button>`;
+        }).join("") + `</div><div class="pk-ft">${quick([["昨天", -1], ["今天", 0], ["7 天前", -7]], "d")}</div>`;
+    } else {
+      const [h, m] = (v || "00:00").split(":");
+      const col = (n, sel, k) => Array.from({length: n}, (_, i) =>
+        `<button class="pk-c ${pad(i) === sel ? "on" : ""}" data-${k}="${pad(i)}">${pad(i)}</button>`).join("");
+      html = `<div class="pk-ch"><span>时</span><span>分</span></div>
+        <div class="pk-cols"><div class="pk-col" data-col="h">${col(24, h, "h")}</div><div class="pk-col" data-col="m">${col(60, m, "m")}</div></div>
+        <div class="pk-ft"><span class="grow"></span><button class="ok" data-done="1">确定</button></div>`;
+    }
+    const keepScroll = pop && kind === "time" ? [...pop.querySelectorAll(".pk-col")].map(c => c.scrollTop) : null;
+    pop.className = "pk" + (kind === "time" ? " t" : "");
+    pop.innerHTML = html;
+    if (kind === "time"){
+      pop.querySelectorAll(".pk-col").forEach((c, i) => {
+        if (keepScroll) c.scrollTop = keepScroll[i];
+        else { const on = c.querySelector(".on"); if (on) c.scrollTop = on.offsetTop - c.offsetTop - 4; }
+      });
+    }
+  }
+  function quick(list, unit){
+    return list.map(([t, off]) => {
+      const d = new Date();
+      if (unit === "m") d.setMonth(d.getMonth() + off, 1); else d.setDate(d.getDate() + off);
+      const val = unit === "m" ? ym(d.getFullYear(), d.getMonth() + 1) : ymd(d);
+      return ok(val) ? `<button data-v="${val}">${t}</button>` : "";
+    }).join("") + (el.dataset.clear ? '<span class="grow"></span><button data-v="">清空</button>' : "");
+  }
+  function open(input){
+    if (el === input) return close();
+    close();
+    el = input; el.classList.add("picking");
+    const kind = el.dataset.pick, v = el.value, now = new Date();
+    if (kind === "month") view = {y: v ? +v.slice(0, 4) : now.getFullYear()};
+    else if (kind === "date"){
+      const base = v ? new Date(v + "T00:00") : (el.max ? new Date(el.max + "T00:00") : now);
+      view = {y: base.getFullYear(), m: base.getMonth()};
+    } else view = {};
+    pop = document.createElement("div");
+    pop.addEventListener("mousedown", (e) => e.preventDefault());   // 不让输入框失焦
+    pop.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b || b.disabled) return;
+      if (b.dataset.nav){
+        const d = +b.dataset.nav;
+        if (el.dataset.pick === "month") view.y += d;
+        else { view.m += d; if (view.m < 0){ view.m = 11; view.y--; } if (view.m > 11){ view.m = 0; view.y++; } }
+        return render();
+      }
+      if (b.dataset.done) return close();
+      if (b.dataset.h || b.dataset.m){
+        const [h, m] = (el.value || "00:00").split(":");
+        return set(`${b.dataset.h || h}:${b.dataset.m || m}`, true);
+      }
+      if ("v" in b.dataset) set(b.dataset.v);
+    });
+    document.body.appendChild(pop);
+    render(); place();
+  }
+  document.addEventListener("click", (e) => {
+    const input = e.target.closest && e.target.closest("input[data-pick]");
+    if (input){ if (!input.disabled) open(input); return; }
+    // 用 composedPath：面板里点完会整个重画，被点的按钮已经不在文档里了，contains 判断会误关
+    if (pop && !e.composedPath().includes(pop)) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!pop) return;
+    if (e.key === "Escape"){ close(); e.stopPropagation(); }
+  }, true);
+  document.addEventListener("scroll", (e) => { if (pop && !pop.contains(e.target)) close(); }, true);
+  addEventListener("resize", close);
+  return {close};
 })();
 
 /* 超长文本悬停提示（只在真的被截断时出现） */

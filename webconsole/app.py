@@ -1311,6 +1311,181 @@ def _catchup_window_text(cs: csched.CollectSchedule) -> str:
             "上月评级仍缺数据的账号自动补采")
 
 
+# ---------------------------------------------------------------- 定时任务列表
+# 把散在「定时采集」「接口与策略」两处的定时，按「一个任务一行」列出来：
+# 规则、下次运行、上次运行结果、开关、立即运行。配置本身仍在原来的卡片里改。
+TASK_KEYS = ("collect-daily", "collect-monthly", "collect-catchup", "sync-daily", "sync-monthly")
+
+
+def _next_catchup(cs: csched.CollectSchedule) -> datetime | None:
+    """补采期内的下一次检查时刻（任务每天都触发，但只在补采期内才真的补）。"""
+    sched = cs.as_catchup_schedule()
+    nxt = datasync.next_daily(sched)
+    for _ in range(62):
+        if nxt is None:
+            return None
+        if csched.in_retry_window(cs, nxt.date()):
+            return nxt
+        nxt += timedelta(days=1)
+    return None
+
+
+def _last_collect(match, fired: datetime | None) -> dict:
+    """最近一批定时采集的结果：取最新一条匹配记录，往前 6 小时内同一批的都算进来。"""
+    runs = [r for r in list_runs(300) if match(r)]
+    if not runs:
+        return {}
+    newest = datetime.strptime(runs[0]["created_at"], "%Y-%m-%d %H:%M:%S")
+    batch = [r for r in runs
+             if newest - datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S") <= timedelta(hours=6)]
+    count = lambda st: sum(1 for r in batch if r["status"] in st)  # noqa: E731
+    return {"at": (fired or newest).strftime("%Y-%m-%d %H:%M"), "total": len(batch),
+            "success": count(("success",)), "partial": count(("partial",)),
+            "failed": count(("failed", "stopped")), "skipped": count(("skipped",)),
+            "running": count(("queued", "running"))}
+
+
+def _last_sync(label: str) -> dict:
+    jobs = [j for j in _sync_jobs.values() if j.label.endswith(label)]   # 含「立即运行 · …」
+    if not jobs:
+        return {}
+    j = max(jobs, key=lambda x: x.created_at)
+    sm = j.summary()
+    return {"at": j.created_at.strftime("%Y-%m-%d %H:%M"), "status": sm["status"],
+            "rows": sum(t.get("rows") or 0 for t in sm["tables"]), "error": sm["error"]}
+
+
+def _schedule_tasks() -> list[dict]:
+    cs = _collect_sched()
+    sc = _sync_cfg()
+    ss = sc.schedule
+    accts = csched.target_accounts(_cfg, cs)
+    acct_text = (f"{len(accts)} 个账号" + ("（白名单）" if cs.account_ids else "（全部启用的）"))
+    # 下次运行直接按当前设置算，不用调度线程的缓存：刚改完开关时缓存还没刷新
+    csch = cs.as_schedule()
+    nxt_c = {"daily": _fmt_dt(datasync.next_daily(csch)), "monthly": _fmt_dt(datasync.next_monthly(csch))}
+    nxt_s = {"daily": _fmt_dt(datasync.next_daily(ss)), "monthly": _fmt_dt(datasync.next_monthly(ss))}
+    fired = lambda kind, name: _scheduler.last_fired(kind, name) if _scheduler else None  # noqa: E731
+    month_names = [JOB_NAME[j] for j in cs.month_jobs]
+    on_tables = lambda keys: [datasync.TABLE_LABEL.get(k, k) for k in keys  # noqa: E731
+                              if getattr(sc.tables.get(k), "enabled", True)]
+    daily_sync, monthly_sync = on_tables(datasync.DAILY_TABLES), on_tables(datasync.MONTHLY_TABLES)
+    return [
+        {"key": "collect-daily", "group": "collect", "name": "每日采集",
+         "tables": ["交易数据"], "rule": f"每天 {cs.daily_at} · 回补近 {cs.daily_days} 天",
+         "accounts": acct_text, "enabled": cs.enabled and "kylin" in cs.jobs,
+         "master": cs.enabled, "next": nxt_c["daily"] if "kylin" in cs.jobs else "",
+         "last": _last_collect(lambda r: r.get("source") == "schedule"
+                               and (r.get("mode") == "day" or r.get("label") == "日数据"),
+                               fired("collect", "daily")),
+         "edit": "csDayCard", "runs": "schedule"},
+        {"key": "collect-monthly", "group": "collect", "name": "每月采集",
+         "tables": month_names or ["（未勾评级表）"],
+         "rule": f"每月 {cs.monthly_day} 号 {cs.monthly_at} · 采上个月",
+         "accounts": acct_text, "enabled": cs.enabled and bool(cs.month_jobs),
+         "master": cs.enabled, "next": nxt_c["monthly"] if cs.month_jobs else "",
+         "last": _last_collect(lambda r: r.get("source") == "schedule"
+                               and (r.get("mode") == "month" or r.get("label") == "月数据"),
+                               fired("collect", "monthly")),
+         "edit": "csMonthCard", "runs": "schedule"},
+        {"key": "collect-catchup", "group": "collect", "name": "评级补采",
+         "tables": month_names or ["（未勾评级表）"],
+         "rule": (f"每月 {cs.monthly_day + 1}～{min(cs.monthly_day + cs.monthly_retry_days, 31)} 号 "
+                  f"{cs.monthly_at} · 上月仍缺数才补") if cs.monthly_retry_days else "未开启（缺数补采 0 天）",
+         "accounts": acct_text,
+         "enabled": cs.enabled and bool(cs.month_jobs) and cs.monthly_retry_days > 0,
+         "master": cs.enabled, "next": _fmt_dt(_next_catchup(cs)) if cs.enabled else "",
+         "last": _last_collect(lambda r: r.get("source") == "catchup", None),
+         "edit": "csMonthCard", "runs": "catchup"},
+        {"key": "sync-daily", "group": "sync", "name": "定时补推 · 日表",
+         "tables": daily_sync or ["（没有参与同步的日表）"], "rule": f"每天 {ss.daily_at}",
+         "accounts": "全部账号", "enabled": ss.daily_enabled, "master": True,
+         "next": nxt_s["daily"], "last": _last_sync("定时补推 · 日表"),
+         "edit": "sync-api", "runs": "sync"},
+        {"key": "sync-monthly", "group": "sync", "name": "定时补推 · 月表",
+         "tables": monthly_sync or ["（没有参与同步的月表）"],
+         "rule": f"每月 {ss.monthly_day} 号 {ss.monthly_at}",
+         "accounts": "全部账号", "enabled": ss.monthly_enabled, "master": True,
+         "next": nxt_s["monthly"], "last": _last_sync("定时补推 · 月表"),
+         "edit": "sync-api", "runs": "sync"},
+    ]
+
+
+@app.get("/api/schedule/tasks")
+def api_schedule_tasks() -> JSONResponse:
+    return JSONResponse({"tasks": _schedule_tasks(),
+                         "scheduler_alive": bool(_scheduler and _scheduler.is_alive())})
+
+
+@app.post("/api/schedule/tasks/{key}/toggle")
+def api_schedule_task_toggle(key: str, payload: dict | None = None) -> JSONResponse:
+    """启用 / 停用一个定时任务。开启采集类任务时顺带打开「启用定时采集」总开关。"""
+    if key not in TASK_KEYS:
+        raise HTTPException(404, f"没有这个定时任务：{key}")
+    on = bool((payload or {}).get("on"))
+    if key.startswith("collect-"):
+        cs = _collect_sched()
+        jobs = list(cs.jobs)
+        patch: dict = {}
+        if key == "collect-daily":
+            jobs = [j for j in jobs if j != "kylin"] + (["kylin"] if on else [])
+        elif key == "collect-monthly":
+            jobs = [j for j in jobs if j == "kylin"] + (["rating", "score"] if on else [])
+        else:
+            if on and not cs.month_jobs:
+                jobs = [j for j in jobs if j == "kylin"] + ["rating", "score"]
+            patch["monthly_retry_days"] = (cs.monthly_retry_days or 7) if on else 0
+        jobs = [j for j in csched.ALL_JOBS if j in jobs]
+        patch.update(jobs=jobs, daily_enabled="kylin" in jobs,
+                     monthly_enabled=any(j in jobs for j in ("rating", "score")))
+        if on:
+            patch["enabled"] = True
+        notify.update_settings({"collect": patch})
+    else:
+        cur = dict((notify.Settings.load().sync or {}).get("schedule") or {})
+        cur["daily_enabled" if key == "sync-daily" else "monthly_enabled"] = on
+        notify.update_settings({"sync": {"schedule": cur}})
+    row = next(t for t in _schedule_tasks() if t["key"] == key)
+    return JSONResponse({"ok": True, "task": row,
+                         "message": f"{row['name']}已{'启用' if on else '停用'}"})
+
+
+@app.post("/api/schedule/tasks/{key}/run")
+def api_schedule_task_run(key: str) -> JSONResponse:
+    """立即按定时任务的设置跑一次（不影响下次定时）。后台执行，结果看运行 / 推送记录。"""
+    if key not in TASK_KEYS:
+        raise HTTPException(404, f"没有这个定时任务：{key}")
+    row = next(t for t in _schedule_tasks() if t["key"] == key)
+    if key.startswith("collect-"):
+        cs = _collect_sched()
+        if key == "collect-daily" and "kylin" not in cs.jobs:
+            raise HTTPException(400, "没勾「交易数据」，先启用这个任务")
+        if key != "collect-daily" and not cs.month_jobs:
+            raise HTTPException(400, "没勾任何评级表，先启用这个任务")
+        job = {"collect-daily": "daily", "collect-monthly": "monthly"}.get(key)
+        if job:
+            threading.Thread(target=_run_scheduled_collect, args=(job,),
+                             name=f"run-now-{job}", daemon=True).start()
+        else:
+            items, why = _catchup_items(cs, force=True)
+            if why:
+                raise HTTPException(400, why)
+            if not items:
+                return JSONResponse({"ok": True, "message": "上月评级各账号都已采齐，无需补采"})
+
+            def go() -> None:
+                _prepare_logins(items, cs, "评级补采")
+                run_batch(_queue_items(items, "评级补采", "catchup"))
+
+            threading.Thread(target=go, name="run-now-catchup", daemon=True).start()
+        note = "，先逐个刷新登录态" if cs.refresh_login else ""
+        return JSONResponse({"ok": True, "message": f"已开始：{row['name']}{note}，进度看运行记录"})
+    job = "daily" if key == "sync-daily" else "monthly"
+    sj = SyncJob(f"立即运行 · {row['name']}", "manual")
+    sj.start(job=job)
+    return JSONResponse({"ok": True, "job_id": sj.id, "message": f"已开始：{row['name']}"})
+
+
 @app.get("/api/collect/schedule")
 def api_collect_schedule() -> JSONResponse:
     cs = _collect_sched()
