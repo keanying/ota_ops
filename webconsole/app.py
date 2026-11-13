@@ -137,6 +137,8 @@ _JOB_RESULT_RE = re.compile(r"\s(kylin|rating|score)\s+(success|partial|failed|s
                             r"(\d+)\s+(\d+)\s+(\d+)\s+(\d+)")
 # 登录失败跳过账号时 CLI 打的那一行，取原因放进运行记录的说明里
 _LOGIN_FAIL_RE = re.compile(r"登录失败，跳过该账号：(.+)$")
+# ctrip/browser.py 的 _busy_message：占用 profile 的正是控制台自己开着的浏览器
+_CONSOLE_BUSY_MARK = "正在控制台里开着"
 
 # =============================================================================
 # 运行记录：每次采集一条，日志落盘，控制台重启后历史仍在
@@ -235,6 +237,7 @@ class CollectTask:
         self.source = source             # manual / schedule / catchup / login
         self.empty_jobs: list[str] = []  # 跑了但上游没数据的任务（如 rating 还没出）
         self.login_error = ""            # 登录失败跳过时的原因
+        self.console_busy = False        # 子进程要登录时撞上控制台开着的浏览器
         self.job = "day"                 # day / month / mixed
         self.jobs: list[str] = []        # 采哪几张表：kylin / rating / score
         self.job_results: dict = {}      # 每张表的结果（从 CLI 汇总里解析）
@@ -336,6 +339,51 @@ class CollectTask:
         env["CTRIP_CONSOLE_PID"] = str(os.getpid())
         if self.jobs:
             self._push("info", "采集内容：" + "、".join(JOB_NAME.get(j, j) for j in self.jobs))
+
+        # 控制台里开着这个账号的浏览器时，它占着浏览器 profile；采集子进程一旦
+        # 要重新登录就会撞上「profile 正被占用」直接失败。这里先给采集让路：
+        # 登录态有效就不动浏览器；需要登录就临时关掉它（登录态留在 profile 里，
+        # 子进程打开同一个 profile 会直接沿用），采完再自动打开。
+        reopen = False
+        skip_login = bool(self.params.get("skip_login"))
+        try:
+            if not skip_login:
+                reopen = self._yield_browser(force=False)
+            if not self.stopped:
+                if not self._exec(env):
+                    return
+            # 开头登录态还有效、采到一半才失效要重登；或采集期间有人又打开了浏览器：
+            # 关掉浏览器重跑一次（默认先删后写，重跑不会产生重复数据）
+            if (self.console_busy and not self.stopped and not skip_login
+                    and self._console_worker() is not None):
+                self._push("warn", "采集需要重新登录，但该账号的浏览器正在控制台里开着："
+                                   "关闭浏览器后重跑一次")
+                if self._yield_browser(force=True):
+                    reopen = True
+                    self._reset_results()
+                    if not self._exec(env):
+                        return
+        finally:
+            if reopen:
+                self._reopen_browser()
+
+        text = "已停止" if self.stopped else rc_text(self.rc)
+        if self.job_results:
+            st = {"success": "成功", "partial": "部分完成", "failed": "失败", "skipped": "跳过"}
+            self._push("info", "各表结果：" + "；".join(
+                f"{JOB_NAME.get(j, j)} {st.get(r['status'], r['status'])}，采集 {r['fetched']} 行，写入 {r['written']} 行"
+                for j, r in self.job_results.items()))
+        self._push("done", f"{self.label} {text}{self.empty_detail()}", rc=self.rc)
+        if self.on_done and not self.stopped:
+            # 采集完成的后续动作（推 API）单独兜异常：
+            # 推送失败不该让这次采集看起来像失败了，数据已经在本地库里
+            try:
+                self.on_done(self)
+            except Exception as exc:  # noqa: BLE001
+                self._push("warn", f"采集后置动作异常：{exc}")
+
+    def _exec(self, env: dict) -> bool:
+        """跑一次采集子进程并解析输出。返回 False 表示子进程没能启动（已记好结果）。"""
         self._push("info", f"$ {' '.join(self.argv)}")
         try:
             self.proc = subprocess.Popen(
@@ -347,7 +395,7 @@ class CollectTask:
             self.rc = -1
             self._push("error", f"启动失败：{exc}")
             self._push("done", f"{self.label} 未能启动", rc=-1)
-            return
+            return False
 
         assert self.proc.stdout is not None
         for line in self.proc.stdout:
@@ -364,24 +412,126 @@ class CollectTask:
                 fail = _LOGIN_FAIL_RE.search(line)
                 if fail and not self.login_error:
                     self.login_error = "登录失败：" + fail.group(1)[:300]
+                if _CONSOLE_BUSY_MARK in line:
+                    self.console_busy = True
                 level = "error" if (" ERROR " in line or "❌" in line) else (
                     "warn" if (" WARNING " in line or "⚠" in line) else "info")
                 self._push(level, line)
         self.rc = self.proc.wait()
-        text = "已停止" if self.stopped else rc_text(self.rc)
-        if self.job_results:
-            st = {"success": "成功", "partial": "部分完成", "failed": "失败", "skipped": "跳过"}
-            self._push("info", "各表结果：" + "；".join(
-                f"{JOB_NAME.get(j, j)} {st.get(r['status'], r['status'])}，采集 {r['fetched']} 行，写入 {r['written']} 行"
-                for j, r in self.job_results.items()))
-        self._push("done", f"{self.label} {text}{self.empty_detail()}", rc=self.rc)
-        if self.on_done and not self.stopped:
-            # 采集完成的后续动作（推 API）单独兜异常：
-            # 推送失败不该让这次采集看起来像失败了，数据已经在本地库里
-            try:
-                self.on_done(self)
-            except Exception as exc:  # noqa: BLE001
-                self._push("warn", f"采集后置动作异常：{exc}")
+        return True
+
+    def _reset_results(self) -> None:
+        """重跑前清掉上一次的解析结果，运行记录只反映最后一次。"""
+        self.rc = None
+        self.console_busy = False
+        self.login_error = ""
+        self.empty_jobs = []
+        self.job_results = {}
+
+    # ------------------------------------------------------------ 给采集让出浏览器
+    def _console_worker(self) -> "BrowserWorker | None":
+        """控制台里该账号开着、并且独占 profile 的浏览器。
+
+        常驻模式（CONSOLE_KEEP_ALIVE=1）下浏览器是独立进程、走 CDP，
+        采集子进程能直接连上去复用，不冲突，不用让。
+        """
+        worker = _workers.get(self.account_id)
+        if not worker or not worker.alive:
+            return None
+        session = getattr(worker, "_session", None)
+        if session is not None and getattr(session, "mode", "") == "cdp":
+            return None
+        return worker
+
+    def _login_state(self) -> tuple[bool | None, str]:
+        """与 CLI 的 ensure_logged_in 同一口径判断登录态：True 有效 / False 要重登 / None 判断不了。"""
+        from ctrip.api import NetworkError
+        from ctrip.auth import CookieStore, verify_cookie
+
+        store = CookieStore(_cfg)
+        if not store.exists(self.account_id):
+            return False, "登录态文件不存在"
+        if not store.is_fresh(self.account_id):
+            return False, f"登录态超过 {_cfg.ctrip.cookie_ttl_hours}h 未刷新"
+        try:
+            return verify_cookie(_cfg, self.account_id, get_logger("console"),
+                                 raise_network=True)
+        except NetworkError as exc:
+            return None, f"网络不通，无法判断登录态：{exc}"
+        except Exception as exc:  # noqa: BLE001
+            return None, f"登录态校验异常：{exc}"
+
+    def _notify_browser(self, state: str, message: str) -> None:
+        """在浏览器弹窗里提示（画面通道会转发本任务队列里的消息）。"""
+        item = {"type": "status", "state": state, "message": message,
+                "at": datetime.now().strftime("%H:%M:%S")}
+        with contextlib.suppress(queue.Full):
+            self.queue.put_nowait(item)
+
+    def _yield_browser(self, force: bool) -> bool:
+        """控制台里开着该账号的浏览器时给采集让路。返回是否关掉了浏览器（采完要重新打开）。
+
+        force=False：登录态有效（采集用不到浏览器）就保持打开，什么都不动。
+        force=True：采集已经确认要登录，直接关。
+        页面上正在登录时不能关，等登录结束（登录成功的话登录态也就有了）。
+        """
+        worker = self._console_worker()
+        if worker is None:
+            return False
+
+        if worker.login_active:
+            wait = REFRESH_LOGIN_TIMEOUT
+            self._push("info", f"该账号正在浏览器弹窗里登录，等登录结束再采集（最多等 {wait // 60} 分钟）")
+            deadline = time.monotonic() + wait
+            while (worker.alive and worker.login_active and not self.stopped
+                   and time.monotonic() < deadline):
+                time.sleep(1)
+            if self.stopped:
+                return False
+            if worker.alive and worker.login_active:
+                self._push("warn", "等待登录超时，浏览器保持打开，直接尝试采集")
+                return False
+            worker = self._console_worker()
+            if worker is None:
+                return False
+
+        if not force:
+            ok, detail = self._login_state()
+            if ok is not False:
+                self._push("info", "该账号的浏览器在控制台里开着，"
+                                   + (f"登录态有效（{detail}），采集用不到浏览器，保持打开"
+                                      if ok else f"{detail}；浏览器保持打开"))
+                return False
+            self._push("info", f"{detail}，采集需要用浏览器重新登录")
+
+        self._push("info", "该账号的浏览器在控制台里开着：先临时关闭让采集使用"
+                           "（浏览器里的登录状态会保留并直接沿用），采集结束后自动重新打开")
+        self._notify_browser("closed", "采集任务要用这个浏览器登录，已临时关闭；采集结束后会自动重新打开")
+        _close_browser(self.account_id)
+
+        # 关闭后 profile 占用标记、锁文件要稍等才释放，不等的话子进程照样报占用
+        from ctrip.browser import profile_in_use
+        for _ in range(30):
+            busy, _detail = profile_in_use(_cfg, self.account_id)
+            if not busy:
+                break
+            time.sleep(0.3)
+        return True
+
+    def _reopen_browser(self) -> None:
+        """采集前临时关掉的浏览器，采完重新打开（期间已被人打开过就不用了）。"""
+        worker = _workers.get(self.account_id)
+        if worker and worker.alive:
+            return
+        self._push("info", "重新打开该账号的浏览器")
+        try:
+            resp = api_browser_start(self.account_id)
+            body = json.loads(bytes(resp.body).decode("utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            body = {"ok": False, "message": str(exc)}
+        if not body.get("ok"):
+            self._push("warn", f"浏览器没能自动重新打开：{body.get('message', '')}；"
+                               "需要时在「账户管理 → 浏览器」里再打开")
 
     def _push(self, level: str, message: str, **extra) -> None:
         at = datetime.now().strftime("%H:%M:%S")
@@ -404,9 +554,11 @@ class CollectTask:
         return f"（{names} 上游暂无数据{hint}）"
 
     def stop(self) -> None:
-        if self.proc and self.rc is None:
+        # 子进程还没起（如在等页面上的登录结束）时也要能停
+        if self.rc is None and not self.done.is_set():
             self.stopped = True
-            self.proc.terminate()
+            if self.proc and self.proc.poll() is None:
+                self.proc.terminate()
             self._push("warn", "已请求终止任务")
 
 
