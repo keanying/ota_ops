@@ -813,22 +813,27 @@ worker 就够了。需要时 `CONSOLE_KEEP_ALIVE=1`（端口用 `CONSOLE_CDP_POR
 
 最后清理残留锁文件。整个过程每一步都会打进日志，看得到做了什么。
 
-### 浏览器开着时跑采集任务
+### 浏览器开着时跑采集（自动让出浏览器）
 
-控制台里开着某个账号的浏览器时，它独占这个账号的 profile。以前采集子进程一旦需要重新登录，
-就会报「浏览器正在控制台里开着」直接失败。现在任务管理里的采集（手动、定时、补采都一样）
-开始前会自动让路：
+控制台里开着某个账号的浏览器时，它独占这个账号的 profile。以前采集一旦要重新登录，
+就会报「浏览器正在控制台里开着」直接失败。现在命令行会自己找控制台把浏览器要过来：
 
-| 情况 | 处理 |
-|---|---|
-| 登录态有效（采集只走接口、用不到浏览器） | 浏览器保持打开，直接采集 |
-| 登录态失效 / 过期，需要重新登录 | 临时关闭浏览器 → 采集进程打开同一个 profile（浏览器里已登录的状态直接沿用，不用重输密码）→ 采完自动重新打开浏览器 |
-| 采到一半登录态失效，撞上浏览器占用 | 关闭浏览器后整次重跑一次（默认先删后写，不会重复），采完重新打开 |
-| 页面上正在登录 | 不关浏览器，等登录结束再采集（最多 `CONSOLE_REFRESH_LOGIN_TIMEOUT` 秒，默认 10 分钟）；等待中可以停止任务 |
-| 网络不通、判断不了登录态 | 不动浏览器，照常采集，由采集自己报网络错误 |
-| 常驻浏览器（`CONSOLE_KEEP_ALIVE=1`） | 不冲突，采集进程通过 CDP 直接复用，不用让 |
+1. 控制台打开浏览器时，在 `browser/{id}/session.json` 里记下 `console_pid` 和 `console_url`
+   （本机访问控制台的地址，由 `CONSOLE_HOST`/`CONSOLE_PORT` 得出）；
+2. 采集（或 `ctrip.cli login`）需要登录、发现 profile 被控制台占着时，
+   调 `POST /api/browser/{id}/yield`，控制台关掉浏览器并在弹窗里提示；
+3. 命令行用同一个 profile 登录 —— 浏览器里本来就是登录状态的话直接保存，不用再输密码；
+4. 登录一结束（成功失败都一样）就调 `POST /api/browser/{id}/start` 请控制台重新打开，
+   采集接着走接口，不必等采完。
 
-浏览器弹窗开着的话，关闭和重新打开都会在弹窗里提示，画面会自动恢复。每一步都写在这次任务的日志里。
+几个细节：
+
+- 弹窗里**正在登录**时不会关：控制台最多等 `CTRIP_CONSOLE_YIELD_WAIT` 秒（默认 600）让登录结束，
+  还没结束就拒绝，命令行照旧报占用；
+- 常驻浏览器（`CONSOLE_KEEP_ALIVE=1`）本来就能被命令行通过 CDP 复用，不用让；
+- 不论是控制台「任务管理」发起的采集，还是在终端直接跑 `python -m ctrip.cli collect`，走的都是这一条路；
+- 控制台不是用 `python -m webconsole`（或 `run_console.*`、`otaops.sh`）启动的话不知道自己的地址，
+  不会记 `console_url`，命令行就退回原来的提示。
 
 ### Windows 上的进程存活判断
 
@@ -839,11 +844,10 @@ worker 就够了。需要时 `CONSOLE_KEEP_ALIVE=1`（端口用 `CONSOLE_CDP_POR
 要么误杀，要么误判成永远被占用。
 
 控制台用只读的 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` +
-`GetExitCodeProcess` 判断（见 `procutil.py`），无副作用。
+`GetExitCodeProcess` 判断（见 `ctrip/procutil.py`），无副作用。
 
-> `ctrip/browser.py` 里的 `_pid_alive` 仍是 `os.kill(pid, 0)`。控制台这条路已经
-> 绕开它，但 `python -m ctrip.cli browser --clear-locks` 走的还是原实现，
-> 在 Windows 上可能判不准。要一并修的话，把那个函数换成 `procutil.pid_alive` 即可。
+> 实现在 `ctrip/procutil.py`，`ctrip/browser.py` 的 `_pid_alive` 也已改用它：命令行要判断
+> 占着 profile 的控制台是否还活着，原来的 `os.kill(pid, 0)` 在 Windows 上会把控制台直接结束掉。
 
 ### 手动确认
 
@@ -905,9 +909,9 @@ headless 下 Playwright 把 viewport 设成 1440×1080，但浏览器窗口的�
 
 - **Windows 上 VNC 模式不可用**（`Xvfb`/`x11vnc` 是 X11 的东西）。硬指定
   `CONSOLE_STREAM=vnc` 会在启动浏览器时返回 503 并说明原因，不会假装能跑。
-- **同一账号的 profile 一次只能被一个进程打开。** 控制台开着浏览器时，别同时跑
-  `python -m ctrip.cli login`，会报 `BrowserBusyError`。控制台里发起的采集任务会自动让路（见上文「浏览器开着时跑采集任务」），
-  但在命令行里直接跑 `collect` 需要重新登录时，仍会因为占用而失败。
+- **同一账号的 profile 一次只能被一个进程打开。** 控制台开着浏览器时，命令行的 `login` / `collect`
+  要登录会自动请控制台让出、登完还回去（见上文「浏览器开着时跑采集」）；
+  但弹窗里正在登录时不会让，命令行会报 `BrowserBusyError`。
 - 关闭控制台前先点「关闭浏览器」，否则 `browser/{id}/session.json` 里的 `holder_pid`
   会残留，下次启动被自己的记录拦住。真残留了就 `python -m ctrip.cli browser --clear-locks`。
 - 画质按钮在 40/60/80 之间切。网络差就调低，看验证码细节就调高。
