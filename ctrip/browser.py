@@ -46,6 +46,7 @@ from typing import Any
 
 from .config import AppConfig
 from .logging_utils import get_logger
+from .procutil import pid_alive
 
 logger = get_logger("browser")
 
@@ -82,7 +83,7 @@ def _busy_message(cfg: AppConfig, account_id: str, detail: str) -> str:
     """profile 被占用时的提示。占用者是控制台本身时说清楚该去哪儿处理。"""
     meta = read_session_meta(cfg, account_id)
     holder = int(meta.get("holder_pid") or 0)
-    console = int(os.environ.get("CTRIP_CONSOLE_PID") or 0)
+    console = int(os.environ.get("CTRIP_CONSOLE_PID") or meta.get("console_pid") or 0)
     if holder and console and holder == console:
         return (f"账号 {account_id} 的浏览器正在控制台里开着（{detail}），本次采集无法再打开它来重新登录。"
                 f"请在控制台「账户管理 → 浏览器」弹窗里完成登录（登录成功会自动保存登录态），"
@@ -110,6 +111,7 @@ class BrowserSession:
     _playwright: Any = None
     _browser: Any = None           # 仅 cdp / ephemeral 模式有独立 browser 对象
     _cfg: Any = None               # profile 模式下用于退出时清除占用标记
+    _console_url: str = ""         # 打开前请控制台让出了浏览器：关闭后要请它重新打开
 
     @property
     def reused(self) -> bool:
@@ -179,6 +181,10 @@ class BrowserSession:
                                        last_close_at=datetime.now().isoformat(timespec="seconds"))
                 except Exception:  # noqa: BLE001
                     pass
+            # 浏览器是从控制台那儿借来的，用完还回去
+            if self._console_url:
+                url, self._console_url = self._console_url, ""
+                ask_console_reopen(url, self.account_id)
 
 
 # =============================================================================
@@ -228,15 +234,9 @@ def _port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.6) -> bool
 
 
 def _pid_alive(pid: int) -> bool:
-    if not pid or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
-    except Exception:  # noqa: BLE001 - Windows 上可能抛别的
-        return False
+    # 不能用 os.kill(pid, 0)：Windows 上那是 TerminateProcess，会把被探测的进程
+    # （比如占着 profile 的控制台）直接结束掉。详见 procutil。
+    return pid_alive(pid)
 
 
 def cdp_port_for(cfg: AppConfig, account_id: str) -> int:
@@ -348,6 +348,92 @@ def clear_stale_locks(cfg: AppConfig, account_id: str, log: logging.Logger | Non
     if removed:
         log.info("[%s] 已清理 %d 个残留浏览器锁文件", account_id, removed)
     return removed
+
+
+# =============================================================================
+# 控制台占用：请控制台让出浏览器，用完再请它打开
+# =============================================================================
+#
+# Web 控制台（webconsole）打开某个账号的浏览器时，在 session.json 里记下
+# console_pid / console_url。命令行登录时发现 profile 正被控制台占着，
+# 就调控制台的接口让它先关掉浏览器，登录完再让它重新打开 —— 不用人去点。
+
+# 等控制台让出的上限（秒）。页面上有人正在登录时，控制台会等登录结束再关
+CONSOLE_YIELD_WAIT = int(os.environ.get("CTRIP_CONSOLE_YIELD_WAIT", "600"))
+
+
+def console_holder_url(cfg: AppConfig, account_id: str) -> str:
+    """profile 正被控制台里开着的浏览器占用时，返回控制台地址；否则返回空串。"""
+    meta = read_session_meta(cfg, account_id)
+    holder = int(meta.get("holder_pid") or 0)
+    console_pid = int(meta.get("console_pid") or 0)
+    url = str(meta.get("console_url") or "").rstrip("/")
+    if (url and holder and holder == console_pid and holder != os.getpid()
+            and _pid_alive(holder)):
+        return url
+    return ""
+
+
+def _console_post(url: str, path: str, timeout: float) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
+
+    # 控制台在本机或内网，一律直连，不读系统代理（代理没开时会连不上）
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    req = urllib.request.Request(url + path, data=b"", method="POST")
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+    try:
+        return json.loads(raw.decode("utf-8", "replace") or "{}")
+    except json.JSONDecodeError:
+        return {"ok": False, "message": raw[:200].decode("utf-8", "replace")}
+
+
+def ask_console_release(cfg: AppConfig, account_id: str,
+                        log: logging.Logger | None = None) -> str:
+    """请控制台关掉该账号的浏览器。成功关掉返回控制台地址（用完要还），否则空串。"""
+    log = log or logger
+    url = console_holder_url(cfg, account_id)
+    if not url:
+        return ""
+    log.info("[%s] 浏览器正在控制台里开着，请控制台先关闭它（%s）", account_id, url)
+    try:
+        body = _console_post(url, f"/api/browser/{account_id}/yield?wait={CONSOLE_YIELD_WAIT}",
+                             timeout=CONSOLE_YIELD_WAIT + 60)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[%s] 联系不上控制台（%s）：%s", account_id, url, exc)
+        return ""
+    if not body.get("ok"):
+        log.warning("[%s] 控制台没有关闭浏览器：%s", account_id, body.get("message", ""))
+        return ""
+    if not body.get("closed"):
+        return ""
+    # 控制台关浏览器后，占用标记要稍等才清掉
+    for _ in range(30):
+        busy, _detail = profile_in_use(cfg, account_id)
+        if not busy:
+            break
+        time.sleep(0.5)
+    log.info("[%s] 控制台已关闭浏览器，登录完会请它重新打开", account_id)
+    return url
+
+
+def ask_console_reopen(url: str, account_id: str,
+                       log: logging.Logger | None = None) -> None:
+    """请控制台重新打开之前让出来的浏览器。失败只告警：不影响已经完成的登录。"""
+    log = log or logger
+    try:
+        body = _console_post(url, f"/api/browser/{account_id}/start", timeout=60)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[%s] 请控制台重新打开浏览器失败：%s", account_id, exc)
+        return
+    if body.get("ok"):
+        log.info("[%s] 已请控制台重新打开浏览器", account_id)
+    else:
+        log.warning("[%s] 控制台没能重新打开浏览器：%s", account_id, body.get("message", ""))
 
 
 # =============================================================================
@@ -498,11 +584,15 @@ def _context_kwargs(cfg: AppConfig) -> dict[str, Any]:
 def open_session(cfg: AppConfig, account_id: str, *,
                  headless: bool | None = None,
                  keep_alive: bool = False,
+                 yield_console: bool = False,
                  log: logging.Logger | None = None) -> BrowserSession:
     """打开一个浏览器会话，按可用性依次尝试 CDP 复用 → 持久化 profile → 临时。
 
     ``keep_alive=True`` 时，若尚无常驻浏览器则以独立进程拉起一个并监听
     CDP 端口，本次运行结束后浏览器继续挂在后台。
+
+    ``yield_console=True`` 时，profile 若正被控制台里开着的浏览器占用，
+    先请控制台关掉它再打开；会话关闭时再请控制台重新打开（登录用）。
     """
     from playwright.sync_api import sync_playwright
 
@@ -553,53 +643,23 @@ def open_session(cfg: AppConfig, account_id: str, *,
     # 3) 持久化 profile（默认路径）
     if cfg.ctrip.persistent_browser:
         in_use, detail = profile_in_use(cfg, account_id)
+        console_url = ""
+        if in_use and yield_console:
+            console_url = ask_console_release(cfg, account_id, log)
+            if console_url:
+                in_use, detail = profile_in_use(cfg, account_id)
         if in_use:
+            if console_url:
+                ask_console_reopen(console_url, account_id, log)
             raise BrowserBusyError(_busy_message(cfg, account_id, detail))
-        profile_dir = cfg.browser_profile_dir(account_id)
-        p = sync_playwright().start()
-        launch_kwargs: dict[str, Any] = {
-            "user_data_dir": str(profile_dir),
-            "headless": headless,
-            "slow_mo": cfg.ctrip.slow_mo,
-            "args": list(_LAUNCH_ARGS) + _NO_PROXY_ARGS,
-            # 强制用完整 Chromium（--headless=new）而非精简的 chrome-headless-shell。
-            # 实测：headless-shell 不写 Preferences / Login Data / History /
-            # Service Worker，也不写 SingletonLock，持久化不完整；
-            # 更关键的是它与常驻 CDP 模式（完整 chromium）指纹不一致，
-            # 用户切换模式时会被当成新设备而重新触发验证。
-            "channel": "chromium",
-            **_context_kwargs(cfg),
-        }
         try:
-            context = p.chromium.launch_persistent_context(**launch_kwargs)
-        except Exception as exc:  # noqa: BLE001
-            # 未安装 chromium channel 时降级为默认构建，不让采集直接失败
-            log.warning("[%s] 完整 Chromium 启动失败，降级为默认构建（持久化完整度略低）：%s",
-                        account_id, exc)
-            launch_kwargs.pop("channel", None)
-            try:
-                context = p.chromium.launch_persistent_context(**launch_kwargs)
-            except Exception:  # noqa: BLE001
-                try:
-                    p.stop()
-                except Exception:  # noqa: BLE001
-                    pass
-                raise
-        context.add_init_script(STEALTH_JS)
-        context.set_default_timeout(cfg.ctrip.nav_timeout * 1000)
-        first_run = not any(profile_dir.glob("Default/**/*"))
-        log.info("[%s] 使用持久化浏览器 profile：%s（%s）", account_id, profile_dir,
-                 "首次创建" if first_run else "复用已有设备指纹与登录态")
-        now = datetime.now().isoformat(timespec="seconds")
-        # holder_pid 是并发保护的依据（headless 下 Chromium 不写 SingletonLock），
-        # 必须在会话结束时清除，否则下次运行会被自己的遗留记录拦住
-        write_session_meta(cfg, account_id, mode="profile", pid=os.getpid(),
-                           holder_pid=os.getpid(), holder_since=now,
-                           profile_dir=str(profile_dir), cdp_port=0,
-                           last_open_at=now)
-        return BrowserSession(context=context, mode="profile", account_id=account_id,
-                              profile_dir=profile_dir, keep_alive=False, _playwright=p,
-                              _cfg=cfg)
+            session = _open_profile(cfg, account_id, headless=headless, log=log)
+        except BaseException:
+            if console_url:
+                ask_console_reopen(console_url, account_id, log)
+            raise
+        session._console_url = console_url
+        return session
 
     # 4) 兜底：旧的临时 profile 行为
     log.warning("[%s] 持久化浏览器已关闭，使用临时 profile（每次登录都可能触发验证）", account_id)
@@ -611,6 +671,58 @@ def open_session(cfg: AppConfig, account_id: str, *,
     context.set_default_timeout(cfg.ctrip.nav_timeout * 1000)
     return BrowserSession(context=context, mode="ephemeral", account_id=account_id,
                           keep_alive=False, _playwright=p, _browser=browser)
+
+
+def _open_profile(cfg: AppConfig, account_id: str, *, headless: bool,
+                  log: logging.Logger) -> BrowserSession:
+    """以持久化 profile 启动浏览器（调用方已确认 profile 未被占用）。"""
+    from playwright.sync_api import sync_playwright
+
+    profile_dir = cfg.browser_profile_dir(account_id)
+    p = sync_playwright().start()
+    launch_kwargs: dict[str, Any] = {
+        "user_data_dir": str(profile_dir),
+        "headless": headless,
+        "slow_mo": cfg.ctrip.slow_mo,
+        "args": list(_LAUNCH_ARGS) + _NO_PROXY_ARGS,
+        # 强制用完整 Chromium（--headless=new）而非精简的 chrome-headless-shell。
+        # 实测：headless-shell 不写 Preferences / Login Data / History /
+        # Service Worker，也不写 SingletonLock，持久化不完整；
+        # 更关键的是它与常驻 CDP 模式（完整 chromium）指纹不一致，
+        # 用户切换模式时会被当成新设备而重新触发验证。
+        "channel": "chromium",
+        **_context_kwargs(cfg),
+    }
+    try:
+        context = p.chromium.launch_persistent_context(**launch_kwargs)
+    except Exception as exc:  # noqa: BLE001
+        # 未安装 chromium channel 时降级为默认构建，不让采集直接失败
+        log.warning("[%s] 完整 Chromium 启动失败，降级为默认构建（持久化完整度略低）：%s",
+                    account_id, exc)
+        launch_kwargs.pop("channel", None)
+        try:
+            context = p.chromium.launch_persistent_context(**launch_kwargs)
+        except Exception:  # noqa: BLE001
+            try:
+                p.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+    context.add_init_script(STEALTH_JS)
+    context.set_default_timeout(cfg.ctrip.nav_timeout * 1000)
+    first_run = not any(profile_dir.glob("Default/**/*"))
+    log.info("[%s] 使用持久化浏览器 profile：%s（%s）", account_id, profile_dir,
+             "首次创建" if first_run else "复用已有设备指纹与登录态")
+    now = datetime.now().isoformat(timespec="seconds")
+    # holder_pid 是并发保护的依据（headless 下 Chromium 不写 SingletonLock），
+    # 必须在会话结束时清除，否则下次运行会被自己的遗留记录拦住
+    write_session_meta(cfg, account_id, mode="profile", pid=os.getpid(),
+                       holder_pid=os.getpid(), holder_since=now,
+                       profile_dir=str(profile_dir), cdp_port=0,
+                       last_open_at=now)
+    return BrowserSession(context=context, mode="profile", account_id=account_id,
+                          profile_dir=profile_dir, keep_alive=False, _playwright=p,
+                          _cfg=cfg)
 
 
 def _chromium_executable() -> str | None:

@@ -285,8 +285,9 @@ def login(cfg: AppConfig, account: AccountConfig, log: logging.Logger | None = N
              account.account_id, headless, cfg.ctrip.login_timeout)
 
     try:
+        # 控制台里开着这个账号的浏览器时，请它先关掉、登录完再打开
         session = open_session(cfg, account.account_id, headless=headless,
-                               keep_alive=keep_alive, log=log)
+                               keep_alive=keep_alive, yield_console=True, log=log)
     except BrowserBusyError as exc:
         return LoginResult(account.account_id, False, str(exc), retryable=False)
     except Exception as exc:  # noqa: BLE001

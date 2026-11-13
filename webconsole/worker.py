@@ -135,6 +135,12 @@ class BrowserWorker(threading.Thread):
             if self._session.reused:
                 self.emit("log", level="info",
                           message="已连上该账号正在运行的浏览器，无需重新启动")
+            if getattr(self._session, "mode", "") == "profile":
+                # 记下「占着 profile 的是控制台、地址在哪」：命令行采集要登录时
+                # 据此请控制台先关掉浏览器、登录完再打开（ctrip.browser.ask_console_release）
+                from ctrip.browser import write_session_meta
+                write_session_meta(self.cfg, self.account_id, console_pid=os.getpid(),
+                                   console_url=os.environ.get("CTRIP_CONSOLE_URL", ""))
         except BrowserBusyError as exc:
             self.error = str(exc)
             self.emit("status", state="error", message=str(exc))
