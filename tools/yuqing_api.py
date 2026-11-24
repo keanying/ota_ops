@@ -24,15 +24,16 @@ except ImportError:
 
 class Config:
     base_url = ""          # 域名，如 "https://yq.example.com"
-    login_name = ""        # 用户名
-    password = ""          # 密码（明文，登录时自动做 md5）
-    imei = ""              # 接口方提供的 imei
-    sign_key = ""          # 签名密钥
-    interval = 6           # 两次请求间隔（秒）：文档限制 1 分钟不超过 10 次
-    timeout = 30           # 请求超时（秒）
+    login_name = ""        # 用户名（登录 data.loginName）
+    password = ""          # 密码明文（登录 data.passWord，发送前自动做 md5）
+    imei = ""              # 请求头 imei，接口方提供
 
 
 class YuqingApi:
+    SIGN_KEY = ""          # 签名密钥（见接口文档 1.4），只用来算 sign，不发送；不要提交进仓库
+    INTERVAL = 6           # 两次请求间隔（秒）：文档限制 1 分钟不超过 10 次
+    TIMEOUT = 30           # 请求超时（秒）
+
     def __init__(self, config):
         self.cfg = config
         self.token = ""        # 登录返回，放在请求头 Authorization 里
@@ -49,7 +50,7 @@ class YuqingApi:
         text += f"#{timestamp}"
         padder = padding.PKCS7(64).padder()
         raw = padder.update(text.encode("utf-8")) + padder.finalize()
-        key = self.cfg.sign_key.encode("utf-8")[:24]
+        key = self.SIGN_KEY.encode("utf-8")[:24]
         iv = bytes.fromhex("0102030405060708")
         enc = Cipher(TripleDES(key), modes.CBC(iv)).encryptor()
         return (enc.update(raw) + enc.finalize()).hex()
@@ -60,8 +61,8 @@ class YuqingApi:
         if need_login:
             headers["Authorization"] = f"Bearer {self.token}"
         resp = requests.post(self.cfg.base_url + path, json=body, headers=headers,
-                             timeout=self.cfg.timeout)
-        time.sleep(self.cfg.interval)
+                             timeout=self.TIMEOUT)
+        time.sleep(self.INTERVAL)
         result = resp.json()
         if str(result.get("code")) != "200":
             raise RuntimeError(f"{path} 调用失败：{result.get('code')} {result.get('msg')}")
