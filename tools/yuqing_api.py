@@ -40,13 +40,18 @@ class YuqingApi:
 
     # ---------------------------------------------------------------- 签名
     def sign(self, data, timestamp):
-        """data 按字段顺序拼「字段名+值」，再拼 #时间戳，3DES 加密后转十六进制。"""
+        """data 按字段顺序拼「字段名+值」，再拼 #时间戳，3DES 加密后转十六进制。
+
+        与对方 Java 的 DESUtils.encrypt 一致：DESede/CBC/PKCS7Padding，
+        IV 固定 0102030405060708，密钥取 UTF-8 前 24 字节，输出小写十六进制。
+        """
         text = "".join(f"{k}{'null' if v is None else v}" for k, v in data.items())
         text += f"#{timestamp}"
         padder = padding.PKCS7(64).padder()
-        raw = padder.update(text.encode()) + padder.finalize()
-        key = self.cfg.sign_key.encode()[:24]
-        enc = Cipher(TripleDES(key), modes.ECB()).encryptor()
+        raw = padder.update(text.encode("utf-8")) + padder.finalize()
+        key = self.cfg.sign_key.encode("utf-8")[:24]
+        iv = bytes.fromhex("0102030405060708")
+        enc = Cipher(TripleDES(key), modes.CBC(iv)).encryptor()
         return (enc.update(raw) + enc.finalize()).hex()
 
     # ---------------------------------------------------------------- 请求
