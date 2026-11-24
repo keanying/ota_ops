@@ -2,7 +2,8 @@
 
 调用顺序：登录 → 专题列表 → 文章列表 → 文章详情 → 热点数据 → 专题预警 → 融媒体数据
 
-公共参数在 Config 里改，用户名密码和每次的查询条件在 main() 里改。
+域名、用户名密码等全局参数在 Config 里改；每次的查询条件在 main() 里改。
+其他接口都依赖登录返回的 token 和 userId，没登录时会先自动登录。
 运行：python tools/yuqing_api.py
 """
 
@@ -23,6 +24,8 @@ except ImportError:
 
 class Config:
     base_url = ""          # 域名，如 "https://yq.example.com"
+    login_name = ""        # 用户名
+    password = ""          # 密码（明文，登录时自动做 md5）
     imei = ""              # 接口方提供的 imei
     sign_key = ""          # 签名密钥
     interval = 6           # 两次请求间隔（秒）：文档限制 1 分钟不超过 10 次
@@ -32,8 +35,8 @@ class Config:
 class YuqingApi:
     def __init__(self, config):
         self.cfg = config
-        self.token = ""
-        self.user_id = None
+        self.token = ""        # 登录返回，放在请求头 Authorization 里
+        self.user_id = None    # 登录返回，其他接口的必填参数
 
     # ---------------------------------------------------------------- 签名
     def sign(self, data, timestamp):
@@ -47,9 +50,9 @@ class YuqingApi:
         return (enc.update(raw) + enc.finalize()).hex()
 
     # ---------------------------------------------------------------- 请求
-    def post(self, path, body):
+    def post(self, path, body, need_login=True):
         headers = {"imei": self.cfg.imei}
-        if self.token:
+        if need_login:
             headers["Authorization"] = f"Bearer {self.token}"
         resp = requests.post(self.cfg.base_url + path, json=body, headers=headers,
                              timeout=self.cfg.timeout)
@@ -59,49 +62,51 @@ class YuqingApi:
             raise RuntimeError(f"{path} 调用失败：{result.get('code')} {result.get('msg')}")
         return result.get("data")
 
+    def call(self, path, params):
+        """调用登录后的接口：自动带上登录返回的 token 和 userId。"""
+        if not self.token:
+            self.login()
+        return self.post(path, {"userId": self.user_id, **params})
+
     # ---------------------------------------------------------------- 1. 登录
-    def login(self, login_name, password):
-        data = {"loginName": login_name,
-                "passWord": hashlib.md5(password.encode()).hexdigest()}
+    def login(self):
+        data = {"loginName": self.cfg.login_name,
+                "passWord": hashlib.md5(self.cfg.password.encode()).hexdigest()}
         ts = int(time.time() * 1000)
         body = {"sign": self.sign(data, ts), "timestamp": ts, "data": data}
-        result = self.post("/api/third/login", body)
+        result = self.post("/api/third/login", body, need_login=False)
         self.token = result["token"]
         self.user_id = result["userId"]
         print(f"登录成功，userId={self.user_id}")
 
     # ---------------------------------------------------------------- 2. 专题列表
     def special_list(self):
-        return self.post("/api/third/special/list", {"userId": self.user_id})
+        return self.call("/api/third/special/list", {})
 
     # ---------------------------------------------------------------- 3. 文章列表
     def doc_list(self, begin, end, page_no=1, page_size=200, **filters):
-        body = {"userId": self.user_id, "begin": begin, "end": end,
-                "pageNo": page_no, "pageSize": page_size, **filters}
-        return self.post("/api/third/special/queryDocList", body)["result"]
+        params = {"begin": begin, "end": end, "pageNo": page_no, "pageSize": page_size, **filters}
+        return self.call("/api/third/special/queryDocList", params)["result"]
 
     # ---------------------------------------------------------------- 4. 文章详情
     def article_detail(self, ids, actile_ids):
-        body = {"userId": self.user_id, "ids": ",".join(ids),
-                "actileIds": ",".join(actile_ids)}
-        return self.post("/api/third/article/detail", body)
+        params = {"ids": ",".join(ids), "actileIds": ",".join(actile_ids)}
+        return self.call("/api/third/article/detail", params)
 
     # ---------------------------------------------------------------- 5. 热点数据
     def hot_top_n(self, begin_time, end_time, top_n=50):
-        body = {"userId": self.user_id, "beginTime": begin_time,
-                "endTime": end_time, "topN": top_n}
-        return self.post("/api/third/special/hotTopN", body)
+        params = {"beginTime": begin_time, "endTime": end_time, "topN": top_n}
+        return self.call("/api/third/special/hotTopN", params)
 
     # ---------------------------------------------------------------- 6. 专题预警
     def warning(self, page_no=1, page_size=50):
-        body = {"userId": self.user_id, "pageNo": page_no, "pageSize": page_size}
-        return self.post("/api/third/special/warning", body)
+        params = {"pageNo": page_no, "pageSize": page_size}
+        return self.call("/api/third/special/warning", params)
 
     # ---------------------------------------------------------------- 7. 融媒体数据
     def fusion_media(self, begin, end, page_no=1, page_size=200, **filters):
-        body = {"userId": self.user_id, "begin": begin, "end": end,
-                "pageNo": page_no, "pageSize": page_size, **filters}
-        return self.post("/api/third/fusionMedia/queryList", body)["result"]
+        params = {"begin": begin, "end": end, "pageNo": page_no, "pageSize": page_size, **filters}
+        return self.call("/api/third/fusionMedia/queryList", params)["result"]
 
 
 def fetch_all(fetch, page_size, max_pages=50):
@@ -123,10 +128,6 @@ def save(name, rows):
 
 
 def main():
-    # ---- 用户名密码 ----
-    login_name = ""
-    password = ""
-
     # ---- 查询条件 ----
     end = datetime.now()
     begin = end - timedelta(days=1)                       # 最近 1 天
@@ -136,8 +137,8 @@ def main():
 
     api = YuqingApi(Config)
 
-    # 1. 登录
-    api.login(login_name, password)
+    # 1. 登录（拿 token 和 userId，后面的接口都靠它）
+    api.login()
 
     # 2. 专题列表
     save("specials", api.special_list())
