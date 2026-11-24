@@ -46,6 +46,8 @@ class YuqingApi:
         与对方 Java 的 DESUtils.encrypt 一致：DESede/CBC/PKCS7Padding，
         IV 固定 0102030405060708，密钥取 UTF-8 前 24 字节，输出小写十六进制。
         """
+        if len(self.SIGN_KEY.encode("utf-8")) < 24:
+            raise ValueError("YuqingApi.SIGN_KEY 没填或不足 24 位（见接口文档 1.4 的签名密钥）")
         text = "".join(f"{k}{'null' if v is None else v}" for k, v in data.items())
         text += f"#{timestamp}"
         padder = padding.PKCS7(64).padder()
