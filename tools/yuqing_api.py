@@ -13,13 +13,14 @@
 
 怎么用
 ------
-* 公共参数（域名、imei、账号密码、签名密钥等）在下面「公共参数」一节里改，
-  也可以用同名环境变量（YUQING_BASE_URL 等）注入，免得把密码写进代码；
-* 每次运行的动态参数（时间窗口、媒体类型、关键词、跑哪几步…）在 ``main()`` 开头改；
+* 公共参数（域名、imei、签名密钥等）在下面「公共参数」一节里改，
+  也可以用同名环境变量（YUQING_BASE_URL 等）注入；
+* 用户名、密码，以及每次运行的动态参数（时间窗口、媒体类型、关键词、跑哪几步…）
+  在 ``main()`` 开头改；
 * 运行：``python tools/yuqing_api.py``；结果按步骤存成 JSON，放在 ``OUTPUT_DIR`` 下；
-* 只算签名不发请求（拿对方给的示例核对加密方式）::
+* 只算签名不发请求（时间戳自动取当前时间，打印待签名串、sign 和完整登录请求体）::
 
-      python tools/yuqing_api.py sign 123123 222222 1604664285307
+      python tools/yuqing_api.py sign
 
 几个刻意的处理
 --------------
@@ -58,10 +59,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BASE_URL = os.environ.get("YUQING_BASE_URL", "")
 # 接口提供方分配的 imei，所有请求都带在请求头里
 IMEI = os.environ.get("YUQING_IMEI", "")
-# 登录账号；密码填明文，代码里自动做 md5（已经是 md5 的话把 PASSWORD_IS_MD5 改成 True）
-LOGIN_NAME = os.environ.get("YUQING_LOGIN_NAME", "")
-PASSWORD = os.environ.get("YUQING_PASSWORD", "")
-PASSWORD_IS_MD5 = False
+# 登录用户名、密码在 main() 里填。密码填明文，代码里自动做 md5：
+PASSWORD_IS_MD5 = False             # 填的已经是 md5 就改成 True
 PASSWORD_MD5_UPPER = False          # md5 结果用大写十六进制
 # 签名密钥（对方提供）
 SIGN_KEY = os.environ.get("YUQING_SIGN_KEY", "")
@@ -180,6 +179,15 @@ def make_sign(data: dict[str, Any], timestamp: int, key: str | None = None) -> s
     return des3_encrypt(sign_plaintext(data, timestamp), key or SIGN_KEY)
 
 
+def build_login_body(login_name: str, password: str, sign_key: str | None = None,
+                     timestamp: int | None = None) -> dict[str, Any]:
+    """登录请求体 {sign, timestamp, data}。时间戳不给就取当前毫秒时间。"""
+    pwd = password if PASSWORD_IS_MD5 else md5_hex(password, PASSWORD_MD5_UPPER)
+    data = {"loginName": login_name, "passWord": pwd}   # 顺序即签名顺序
+    ts = int(time.time() * 1000) if timestamp is None else int(timestamp)
+    return {"sign": make_sign(data, ts, sign_key), "timestamp": ts, "data": data}
+
+
 # =============================================================================
 # 客户端
 # =============================================================================
@@ -187,15 +195,16 @@ def make_sign(data: dict[str, Any], timestamp: int, key: str | None = None) -> s
 class YuqingClient:
     """按文档封装各接口。登录态、限速、每日计数都在这里处理，调用方只管调方法。"""
 
-    def __init__(self, base_url: str = BASE_URL, imei: str = IMEI,
-                 login_name: str = LOGIN_NAME, password: str = PASSWORD,
-                 sign_key: str = SIGN_KEY, state_file: Path = STATE_FILE) -> None:
+    def __init__(self, login_name: str, password: str, *, base_url: str = BASE_URL,
+                 imei: str = IMEI, sign_key: str = SIGN_KEY,
+                 state_file: Path = STATE_FILE) -> None:
         missing = [n for n, v in (("BASE_URL", base_url), ("IMEI", imei),
-                                  ("LOGIN_NAME", login_name), ("PASSWORD", password),
                                   ("SIGN_KEY", sign_key)) if not v]
         if missing:
             raise YuqingError("公共参数没填：" + "、".join(missing)
                               + "（在 tools/yuqing_api.py 顶部或环境变量 YUQING_* 里设置）")
+        if not login_name or not password:
+            raise YuqingError("用户名或密码没填（在 main() 开头设置）")
         self.base_url = base_url.rstrip("/")
         self.imei = imei
         self.login_name = login_name
@@ -325,10 +334,7 @@ class YuqingClient:
                 logger.info("复用已保存的 token（%s 登录，userId=%s）", at, self.user_id)
                 return self.token, self.user_id
 
-        pwd = self.password if PASSWORD_IS_MD5 else md5_hex(self.password, PASSWORD_MD5_UPPER)
-        data = {"loginName": self.login_name, "passWord": pwd}   # 顺序即签名顺序
-        ts = int(time.time() * 1000)
-        body = {"sign": make_sign(data, ts, self.sign_key), "timestamp": ts, "data": data}
+        body = build_login_body(self.login_name, self.password, self.sign_key)
         logger.info("登录 %s", self.login_name)
         result = self._request("login", body, auth=False) or {}
         token = result.get("token")
@@ -483,8 +489,19 @@ def save_json(name: str, rows: Any, out_dir: Path) -> Path:
 # 主流程：按调用顺序跑一遍
 # =============================================================================
 
-def main() -> int:
+def main(sign_only: bool = False) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    # ---- 登录账号 -------------------------------------------------------------
+    login_name = ""                # 用户名
+    password = ""                  # 密码（明文，代码里自动做 md5）
+
+    # 只算签名、打印登录请求体，不发任何请求（用来和对方核对签名）。
+    # 命令行 `python tools/yuqing_api.py sign` 等同于这里设成 True
+    only_print_sign = False
+
+    if sign_only or only_print_sign:
+        return print_login_sign(login_name, password)
 
     # ---- 本次运行的动态参数（按需修改）--------------------------------------
     end_dt = datetime.now().replace(microsecond=0)
@@ -528,7 +545,7 @@ def main() -> int:
     out_dir = OUTPUT_DIR / end_dt.strftime("%Y%m%d_%H%M%S")
     # -------------------------------------------------------------------------
 
-    client = YuqingClient()
+    client = YuqingClient(login_name, password)
     summary: dict[str, Any] = {"window": [begin, end]}
 
     # 1. 登录（后面所有接口都要 token + userId）
@@ -580,24 +597,29 @@ def main() -> int:
     return 0
 
 
-def _sign_cli(argv: list[str]) -> int:
-    """python tools/yuqing_api.py sign <loginName> <passWord> <timestamp>
-    按当前配置算签名（passWord 原样参与，不做 md5），用来和对方给的示例核对。"""
-    if len(argv) != 3:
-        print(_sign_cli.__doc__)
-        return 2
-    name, pwd, ts = argv
-    data = {"loginName": name, "passWord": pwd}
-    print("待签名串：", sign_plaintext(data, int(ts)))
-    print("sign    ：", make_sign(data, int(ts)))
+def print_login_sign(login_name: str, password: str) -> int:
+    """按当前配置生成一次登录请求体并打印，不发请求。时间戳取当前时间。
+
+    拿打印出来的「待签名串 / 时间戳 / sign」去和对方核对，
+    或把「登录请求体」直接贴到 Postman 里试。
+    """
+    if not login_name or not password:
+        raise YuqingError("用户名或密码没填（在 main() 开头设置）")
+    if not SIGN_KEY:
+        raise YuqingError("SIGN_KEY 没填（在 tools/yuqing_api.py 顶部或环境变量 YUQING_SIGN_KEY 里设置）")
+    body = build_login_body(login_name, password)
+    print("时间戳    ：", body["timestamp"])
+    print("待签名串  ：", sign_plaintext(body["data"], body["timestamp"]))
+    print("sign      ：", body["sign"])
+    print("加密方式  ：", f"3DES/{SIGN_CIPHER_MODE}/PKCS5，密钥 {SIGN_KEY_FORMAT}，输出 {SIGN_OUTPUT}")
+    print("登录请求体：")
+    print(json.dumps(body, ensure_ascii=False, indent=2))
     return 0
 
 
 if __name__ == "__main__":
     try:
-        if len(sys.argv) > 1 and sys.argv[1] == "sign":
-            sys.exit(_sign_cli(sys.argv[2:]))
-        sys.exit(main())
+        sys.exit(main(sign_only=len(sys.argv) > 1 and sys.argv[1] == "sign"))
     except YuqingError as exc:
         logging.getLogger("yuqing").error("%s", exc)
         sys.exit(2)
